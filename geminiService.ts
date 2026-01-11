@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AISuggestion, DeviceCategory } from "./types";
 
+// Initialize the GoogleGenAI client with the required named parameter.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const analyzeFault = async (
@@ -12,7 +13,8 @@ export const analyzeFault = async (
   initialCondition: string
 ): Promise<AISuggestion[]> => {
   try {
-    // Technical forensic repair analysis involves complex reasoning, so using gemini-3-pro-preview.
+    // Technical forensic repair analysis involves complex reasoning.
+    // Use 'gemini-3-pro-preview' as specified in guidelines for complex reasoning.
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: `Perform a forensic repair analysis for a ${category} (${brand} ${model}).
@@ -45,7 +47,9 @@ export const analyzeFault = async (
       }
     });
 
-    return JSON.parse(response.text || "[]");
+    // Access .text property directly as per latest guidelines.
+    const text = response.text;
+    return JSON.parse(text || "[]");
   } catch (error) {
     console.error("AI Analysis failed:", error);
     return [];

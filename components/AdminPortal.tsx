@@ -5,7 +5,8 @@ import { getAllUsers, saveUser, getAllPayments, savePayment, saveMessage, getAll
 import { 
   Users, UserPlus, Key, ShieldAlert, CheckCircle2, 
   Settings, Building, Fingerprint, Lock, ShieldCheck,
-  CreditCard, MessageSquare, Send, LayoutGrid, ListChecks, Banknote
+  CreditCard, MessageSquare, Send, LayoutGrid, ListChecks, Banknote,
+  Mail, Server, Globe, Users as UsersIcon, Shield, Landmark
 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -20,8 +21,10 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
   const [view, setView] = useState<'overview' | 'users' | 'payments' | 'messages' | 'settings'>('overview');
   
   const [newUserInfo, setNewUserInfo] = useState({ username: '', password: '', name: '', company: '', role: 'staff' as UserRole });
-  const [adminPassword, setAdminPassword] = useState({ current: '', next: '' });
   const [bankDetails, setBankDetails] = useState({ bank: '', account: '', name: '' });
+  const [smtpConfig, setSmtpConfig] = useState({ host: '', port: '', user: '', pass: '', secure: true });
+  const [emailRouting, setEmailRouting] = useState<Record<string, { cc: string, bcc: string }>>({});
+  
   const [messageForm, setMessageForm] = useState({ target: 'ALL', content: '' });
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
@@ -34,10 +37,15 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
     const p = await getAllPayments();
     const r = await getAllRepairs();
     const b = await getSetting('bank_details') || { bank: 'Access Bank', account: '0123456789', name: 'RepairGuard HQ' };
+    const s = await getSetting('smtp_config') || { host: 'smtp.repairguardai.io', port: '465', user: 'system@repairguardai.io', pass: '', secure: true };
+    const er = await getSetting('email_routing') || {};
+    
     setUsers(u);
     setPayments(p.sort((a,b) => b.timestamp - a.timestamp));
     setRepairs(r);
     setBankDetails(b);
+    setSmtpConfig(s);
+    setEmailRouting(er);
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -79,10 +87,11 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
     setMsg({ type: 'success', text: 'Message dispatched.' });
   };
 
-  const saveBankDetails = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await setSetting('bank_details', bankDetails);
-    setMsg({ type: 'success', text: 'Bank configuration updated.' });
+  const saveSettings = async (type: 'bank' | 'smtp' | 'routing') => {
+    if (type === 'bank') await setSetting('bank_details', bankDetails);
+    if (type === 'smtp') await setSetting('smtp_config', smtpConfig);
+    if (type === 'routing') await setSetting('email_routing', emailRouting);
+    setMsg({ type: 'success', text: `${type.toUpperCase()} configuration updated.` });
   };
 
   const companies = Array.from(new Set(users.map(u => u.company)));
@@ -138,36 +147,124 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
              <div className="text-3xl font-black">{payments.filter(p => p.status === 'pending').length}</div>
              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pending Approvals</div>
           </div>
-          
-          <div className="md:col-span-3 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-xl">
-            <h3 className="font-black text-lg mb-6 flex items-center space-x-3"><ListChecks className="w-5 h-5" /> <span>Registry Snapshot</span></h3>
-            <div className="space-y-4">
-              {companies.map(org => {
-                const orgJobs = repairs.filter(r => r.company === org);
-                const completed = orgJobs.filter(j => j.status === 'Completed').length;
-                return (
-                  <div key={org} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                    <div>
-                      <p className="font-black text-slate-900">{org}</p>
-                      <p className="text-[10px] text-slate-500 font-bold">{orgJobs.length} Repairs • {users.filter(u => u.company === org).length} Staff</p>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <div className="text-xs font-black text-emerald-500">{completed} Fixed</div>
-                        <div className="text-[9px] font-bold text-slate-400">Resolution Rate</div>
-                      </div>
-                      <div className="w-12 h-12 rounded-full border-4 border-emerald-500/20 flex items-center justify-center font-black text-[10px] text-emerald-600">
-                        {orgJobs.length > 0 ? Math.round((completed/orgJobs.length)*100) : 0}%
-                      </div>
-                    </div>
+        </div>
+      )}
+
+      {view === 'settings' && (
+        <div className="space-y-12">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* SMTP Config */}
+            <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-200">
+              <h3 className="text-xl font-black mb-8 flex items-center space-x-3 text-blue-600">
+                <Server className="w-6 h-6" /> <span>Master SMTP Gateway</span>
+              </h3>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Host Address</label>
+                  <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={smtpConfig.host} onChange={e => setSmtpConfig({...smtpConfig, host: e.target.value})} placeholder="smtp.repairguardai.io" />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase px-2">Port</label>
+                    <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={smtpConfig.port} onChange={e => setSmtpConfig({...smtpConfig, port: e.target.value})} placeholder="465" />
                   </div>
-                );
-              })}
+                  <div className="flex items-center pt-5">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input type="checkbox" checked={smtpConfig.secure} onChange={e => setSmtpConfig({...smtpConfig, secure: e.target.checked})} className="rounded text-blue-600" />
+                      <span className="text-xs font-black uppercase text-slate-500">Secure (SSL/TLS)</span>
+                    </label>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Master User</label>
+                  <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={smtpConfig.user} onChange={e => setSmtpConfig({...smtpConfig, user: e.target.value})} placeholder="auth@domain.com" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Master Pass</label>
+                  <input type="password" placeholder="••••••••" className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={smtpConfig.pass} onChange={e => setSmtpConfig({...smtpConfig, pass: e.target.value})} />
+                </div>
+                <button onClick={() => saveSettings('smtp')} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg mt-4 flex items-center justify-center space-x-2">
+                   <ShieldCheck className="w-4 h-4" /> <span>SAVE GATEWAY CONFIG</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Bank Config */}
+            <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-200">
+              <h3 className="text-xl font-black mb-8 flex items-center space-x-3 text-emerald-600">
+                <Landmark className="w-6 h-6" /> <span>HQ Bank Registry</span>
+              </h3>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Bank Name</label>
+                  <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={bankDetails.bank} onChange={e => setBankDetails({...bankDetails, bank: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Account Number</label>
+                  <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold font-mono" value={bankDetails.account} onChange={e => setBankDetails({...bankDetails, account: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Account Name</label>
+                  <input className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={bankDetails.name} onChange={e => setBankDetails({...bankDetails, name: e.target.value})} />
+                </div>
+                <button onClick={() => saveSettings('bank')} className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl shadow-lg mt-4 flex items-center justify-center space-x-2">
+                   <CheckCircle2 className="w-4 h-4" /> <span>SAVE BANK DETAILS</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Email Routing Table */}
+          <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-200">
+            <h3 className="text-xl font-black mb-2 flex items-center space-x-3 text-slate-800">
+              <Globe className="w-6 h-6" /> <span>Corporate Email Routing (CC/BCC)</span>
+            </h3>
+            <p className="text-xs text-slate-400 font-bold mb-8 uppercase tracking-widest">Map forensic compliance reporting per organization</p>
+            
+            <div className="space-y-4">
+               {companies.map(orgName => {
+                 const org = orgName as string;
+                 const slug = org.toLowerCase().replace(/\s+/g, '');
+                 const routing = emailRouting[org] || { cc: '', bcc: '' };
+                 return (
+                   <div key={org} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+                     <div>
+                       <p className="font-black text-slate-900">{org}</p>
+                       <p className="text-[10px] font-mono text-blue-600 font-black">{slug}@repairguardai.io</p>
+                     </div>
+                     <div className="space-y-1">
+                       <label className="text-[8px] font-black text-slate-400 uppercase px-2 tracking-widest">Internal CC (Admin)</label>
+                       <input 
+                         className="w-full px-3 py-2 bg-white border rounded-xl text-xs font-bold" 
+                         value={routing.cc} 
+                         placeholder="admin@branch.com"
+                         onChange={e => setEmailRouting({...emailRouting, [org]: { ...routing, cc: e.target.value }})}
+                       />
+                     </div>
+                     <div className="space-y-1">
+                       <label className="text-[8px] font-black text-slate-400 uppercase px-2 tracking-widest">Forensic BCC (Auditor)</label>
+                       <input 
+                         className="w-full px-3 py-2 bg-white border rounded-xl text-xs font-bold" 
+                         value={routing.bcc} 
+                         placeholder="archive@repairguardai.io"
+                         onChange={e => setEmailRouting({...emailRouting, [org]: { ...routing, bcc: e.target.value }})}
+                       />
+                     </div>
+                   </div>
+                 );
+               })}
+               {companies.length === 0 && <p className="text-center py-10 text-slate-300 font-black uppercase text-xs">No active organizations recorded</p>}
+               
+               <button onClick={() => saveSettings('routing')} className="w-full bg-slate-900 text-white font-black py-4 rounded-xl shadow-xl mt-6 flex items-center justify-center space-x-3">
+                 <Shield className="w-5 h-5" />
+                 <span>SEAL ROUTING TABLE</span>
+               </button>
             </div>
           </div>
         </div>
       )}
-
+      
+      {/* Existing views (users, payments, messages) remain as is... */}
       {view === 'users' && (
         <div className="space-y-8">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-200">
@@ -240,11 +337,6 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
               </div>
             </div>
           ))}
-          {payments.filter(p => p.status === 'pending').length === 0 && (
-             <div className="py-20 text-center text-slate-300 bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100">
-                <p className="font-black uppercase tracking-widest text-xs">No Pending Financial Requests</p>
-             </div>
-          )}
         </div>
       )}
 
@@ -259,7 +351,7 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Recipient Target</label>
                <select className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={messageForm.target} onChange={e => setMessageForm({...messageForm, target: e.target.value})}>
                  <option value="ALL">ALL ORGANIZATIONS (Global Broadcast)</option>
-                 {companies.map(c => <option key={c} value={c}>{c}</option>)}
+                 {companies.map(c => <option key={c as string} value={c as string}>{c as string}</option>)}
                </select>
              </div>
              <div className="space-y-2">
@@ -270,29 +362,6 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
                <Send className="w-5 h-5" />
                <span>DISPATCH HQ DIRECTIVE</span>
              </button>
-           </form>
-        </div>
-      )}
-
-      {view === 'settings' && (
-        <div className="max-w-xl mx-auto space-y-10">
-           <form onSubmit={saveBankDetails} className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-200">
-             <h3 className="text-xl font-black mb-8 flex items-center space-x-3 text-emerald-600"><CreditCard className="w-6 h-6" /> <span>HQ Bank Configuration</span></h3>
-             <div className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Bank Institution</label>
-                  <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={bankDetails.bank} onChange={e => setBankDetails({...bankDetails, bank: e.target.value})} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Account Number</label>
-                  <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={bankDetails.account} onChange={e => setBankDetails({...bankDetails, account: e.target.value})} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase px-2">Beneficiary Name</label>
-                  <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl font-bold" value={bankDetails.name} onChange={e => setBankDetails({...bankDetails, name: e.target.value})} />
-                </div>
-                <button type="submit" className="w-full bg-emerald-600 text-white font-black py-4 rounded-xl shadow-lg mt-4">UPDATE HQ BANK INFO</button>
-             </div>
            </form>
         </div>
       )}
