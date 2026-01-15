@@ -1,9 +1,9 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { DeviceCategory, RepairJob, AISuggestion, User, PaymentRequest, AdminMessage, DraftRepair } from '../types';
+import { DeviceCategory, RepairJob, AISuggestion, User, PaymentRequest, AdminMessage, DraftRepair, SubscriptionPlan } from '../types';
 import { analyzeFault } from '../geminiService';
 import { signRecord } from '../cryptoUtils';
-import { getAllRepairs, getSetting, savePayment, getMessagesForCompany, saveUser, saveSMS, saveDraft, deleteDraft } from '../db';
+import { getAllRepairs, getSetting, savePayment, getMessagesForCompany, saveUser, saveSMS, saveDraft, deleteDraft, getAllPlans } from '../db';
 import { 
   Smartphone, Laptop, Printer, Tablet, Package, User as UserIcon, Phone, 
   Tag, Terminal, CheckCircle2, ShieldCheck, Sparkles, PlusCircle, 
@@ -17,9 +17,10 @@ interface RepairFormProps {
   onSubmit: (job: RepairJob) => void;
   isOnline: boolean;
   initialData?: DraftRepair | null;
+  onUserUpdate?: (user: User) => void;
 }
 
-const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initialData }) => {
+const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initialData, onUserUpdate }) => {
   const [formData, setFormData] = useState({
     clientName: '', clientPhone: '', clientEmail: '',
     category: 'Phone' as DeviceCategory, brand: '', model: '',
@@ -33,6 +34,28 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const [draftId, setDraftId] = useState<string | null>(null);
+
+  // Core State
+  const [ndprConsent, setNdprConsent] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
+  const [messages, setMessages] = useState<AdminMessage[]>([]);
+  
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [bankDetails, setBankDetails] = useState({ bank: '', account: '', name: '' });
+  const [paymentStep, setPaymentStep] = useState<'plan' | 'bank' | 'done'>('plan');
+
+  const [sigMode, setSigMode] = useState<{client: 'draw' | 'type', tech: 'draw' | 'type'}>({ client: 'draw', tech: 'draw' });
+  const [typedSigs, setTypedSigs] = useState({ client: '', tech: '' });
+  const [clientSignature, setClientSignature] = useState<string | null>(null);
+  const [techSignature, setTechSignature] = useState<string | null>(null);
+  
+  const clientCanvasRef = useRef<HTMLCanvasElement>(null);
+  const techCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [activeCanvas, setActiveCanvas] = useState<'client' | 'tech' | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -53,29 +76,28 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
         front: initialData.devicePhotoFront,
         back: initialData.devicePhotoBack
       });
+      setSuggestions(initialData.aiSuggestions || []);
       setDraftId(initialData.id);
+    } else {
+      // Reset form if initialData is explicitly null (switching to New Asset)
+      setFormData({
+        clientName: '', clientPhone: '', clientEmail: '',
+        category: 'Phone', brand: '', model: '',
+        serial: '', initialCondition: '', fault: '',
+        agreedAmount: '', initialDeposit: ''
+      });
+      setPhotos({});
+      setDraftId(null);
+      setSuggestions([]);
+      setClientSignature(null);
+      setTechSignature(null);
+      setTypedSigs({ client: '', tech: '' });
+      setSigMode({ client: 'draw', tech: 'draw' });
+      setShowPaywall(false);
+      setAiLoading(false);
+      setActiveCamera(null);
     }
   }, [initialData]);
-
-  const [ndprConsent, setNdprConsent] = useState(false);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
-  const [messages, setMessages] = useState<AdminMessage[]>([]);
-  
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<{name: string, price: number} | null>(null);
-  const [bankDetails, setBankDetails] = useState({ bank: '', account: '', name: '' });
-  const [paymentStep, setPaymentStep] = useState<'plan' | 'bank' | 'done'>('plan');
-
-  const [sigMode, setSigMode] = useState<{client: 'draw' | 'type', tech: 'draw' | 'type'}>({ client: 'draw', tech: 'draw' });
-  const [typedSigs, setTypedSigs] = useState({ client: '', tech: '' });
-  const [clientSignature, setClientSignature] = useState<string | null>(null);
-  const [techSignature, setTechSignature] = useState<string | null>(null);
-  
-  const clientCanvasRef = useRef<HTMLCanvasElement>(null);
-  const techCanvasRef = useRef<HTMLCanvasElement>(null);
-  const [activeCanvas, setActiveCanvas] = useState<'client' | 'tech' | null>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
     loadContext();
@@ -85,14 +107,26 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   const loadContext = async () => {
     const b = await getSetting('bank_details') || { bank: 'Access Bank', account: '0123456789', name: 'RepairGuard HQ' };
     const m = await getMessagesForCompany(user.company);
+    const p = await getAllPlans();
     setBankDetails(b);
     setMessages(m);
+    
+    // Set plans or default if none exist
+    if (p.length > 0) {
+      setPlans(p);
+    } else {
+      setPlans([
+        { id: 'def1', name: '2 Weeks', price: 5000, durationDays: 14, description: 'Standard Access', isActive: true },
+        { id: 'def2', name: '1 Month', price: 9000, durationDays: 30, description: 'Extended Access', isActive: true }
+      ]);
+    }
   };
 
   const checkAIEligibility = (): boolean => {
     const isSubscribed = user.subscriptionExpiry && user.subscriptionExpiry > Date.now();
     if (isSubscribed) return true;
-    if (user.aiUsageCount < 10) return true;
+    const usage = user.aiUsageCount || 0;
+    if (usage < 10) return true;
     return false;
   };
 
@@ -159,9 +193,11 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
     const results = await analyzeFault(formData.category, formData.brand, formData.model, formData.fault, formData.initialCondition);
     setSuggestions(results);
     
-    if (!user.subscriptionExpiry || user.subscriptionExpiry < Date.now()) {
-      const updatedUser = { ...user, aiUsageCount: (user.aiUsageCount || 0) + 1 };
-      await saveUser(updatedUser);
+    // Increment usage count and update user
+    const updatedUser = { ...user, aiUsageCount: (user.aiUsageCount || 0) + 1 };
+    await saveUser(updatedUser);
+    if (onUserUpdate) {
+        onUserUpdate(updatedUser);
     }
     
     setAiLoading(false);
@@ -178,6 +214,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       amount: selectedPlan.price,
       confirmedAmount: selectedPlan.price,
       plan: selectedPlan.name,
+      durationDays: selectedPlan.durationDays,
       status: 'pending',
       timestamp: Date.now()
     });
@@ -268,17 +305,21 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       return;
     }
 
+    const idToUse = draftId || `draft-${Date.now()}`;
+
     const draft: DraftRepair = {
-      id: draftId || `draft-${Date.now()}`,
+      id: idToUse,
       company: user.company,
       createdBy: user.id,
       ...formData,
       timestamp: Date.now(),
       devicePhotoFront: photos.front,
-      devicePhotoBack: photos.back
+      devicePhotoBack: photos.back,
+      aiSuggestions: suggestions // Persist AI diagnosis
     };
 
     await saveDraft(draft);
+    setDraftId(idToUse); // Prevent duplication
     alert('Form saved to Drafts.');
   };
 
@@ -370,17 +411,17 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
                  </div>
                  
                  <div className="grid grid-cols-2 gap-4">
-                    {[
-                      { name: '2 Weeks', price: 5000 },
-                      { name: '1 Month', price: 9000 }
-                    ].map(plan => (
+                    {plans.map(plan => (
                       <button 
-                        key={plan.name}
+                        key={plan.id}
                         onClick={() => { setSelectedPlan(plan); setPaymentStep('bank'); }}
-                        className="p-6 rounded-3xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 transition-all group text-left"
+                        className="p-6 rounded-3xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 transition-all group text-left flex flex-col justify-between"
                       >
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{plan.name}</p>
-                        <p className="text-2xl font-black text-slate-900 mt-2">₦{plan.price.toLocaleString()}</p>
+                        <div>
+                           <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{plan.name}</p>
+                           <p className="text-[10px] font-bold text-blue-600 mt-1">{plan.durationDays} Days</p>
+                        </div>
+                        <p className="text-2xl font-black text-slate-900 mt-4">₦{plan.price.toLocaleString()}</p>
                       </button>
                     ))}
                  </div>

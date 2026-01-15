@@ -5,6 +5,19 @@ export type UserRole = 'super_admin' | 'admin' | 'staff' | 'manager';
 export type PaymentStatus = 'pending' | 'approved' | 'rejected';
 export type RegistrationStatus = 'unregistered' | 'pending_verification' | 'verified' | 'revoked';
 
+export const APP_FEATURES = [
+  "AI Forensic Diagnostics (Gemini)",
+  "Offline Drafts & Caching",
+  "NDPR Compliance Logging",
+  "Cryptographic Record Hashing",
+  "Client SMS Notifications",
+  "Biometric Officer Auth",
+  "Cloud Synchronization",
+  "PDF Report Generation",
+  "HQ Broadcast Receiver",
+  "Justice Mode Evidence Export"
+];
+
 export interface User {
   id: string;
   username: string;
@@ -15,6 +28,7 @@ export interface User {
   createdAt: number;
   aiUsageCount: number;
   subscriptionExpiry?: number;
+  skillLevel?: 'Professional' | 'Apprentice';
   
   // Mandatory Compliance Fields
   registrationStatus: RegistrationStatus;
@@ -89,6 +103,9 @@ export interface DraftRepair {
   // Visual Evidence
   devicePhotoFront?: string;
   devicePhotoBack?: string;
+  
+  // AI Data
+  aiSuggestions?: AISuggestion[];
 }
 
 export interface AISuggestion {
@@ -104,6 +121,16 @@ export interface SyncStats {
   lastSynced: number | null;
 }
 
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  price: number;
+  durationDays: number;
+  description: string;
+  features: string[];
+  isActive: boolean;
+}
+
 export interface PaymentRequest {
   id: string;
   userId: string;
@@ -112,6 +139,7 @@ export interface PaymentRequest {
   amount: number;
   confirmedAmount: number;
   plan: string;
+  durationDays?: number;
   status: PaymentStatus;
   timestamp: number;
 }

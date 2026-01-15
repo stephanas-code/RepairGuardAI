@@ -1,8 +1,8 @@
 
-import { RepairJob, User, PaymentRequest, AdminMessage, SMSLog, DraftRepair } from './types';
+import { RepairJob, User, PaymentRequest, AdminMessage, SMSLog, DraftRepair, SubscriptionPlan } from './types';
 
 const DB_NAME = 'RepairGuardDB_v4';
-const DB_VERSION = 6; // Incremented for drafts
+const DB_VERSION = 7; // Incremented for plans
 const STORES = {
   REPAIRS: 'repairs',
   USERS: 'users',
@@ -11,7 +11,8 @@ const STORES = {
   MESSAGES: 'messages',
   COMPLIANCE: 'compliance_logs',
   SMS: 'sms_logs',
-  DRAFTS: 'drafts'
+  DRAFTS: 'drafts',
+  PLANS: 'plans'
 };
 
 export const initDB = (): Promise<IDBDatabase> => {
@@ -43,6 +44,9 @@ export const initDB = (): Promise<IDBDatabase> => {
       }
       if (!db.objectStoreNames.contains(STORES.DRAFTS)) {
         db.createObjectStore(STORES.DRAFTS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.PLANS)) {
+        db.createObjectStore(STORES.PLANS, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -214,6 +218,33 @@ export const getDraftsForCompany = async (company: string): Promise<DraftRepair[
 
 export const deleteDraft = async (id: string): Promise<void> => {
   const db = await initDB();
-  const tx = db.transaction(STORES.DRAFTS, 'readwrite');
-  tx.objectStore(STORES.DRAFTS).delete(id);
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.DRAFTS, 'readwrite');
+    tx.objectStore(STORES.DRAFTS).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
+// Plan Functions
+export const savePlan = async (plan: SubscriptionPlan): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORES.PLANS, 'readwrite');
+  tx.objectStore(STORES.PLANS).put(plan);
+};
+
+export const getAllPlans = async (): Promise<SubscriptionPlan[]> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORES.PLANS, 'readonly');
+    const request = tx.objectStore(STORES.PLANS).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => resolve([]);
+  });
+};
+
+export const deletePlan = async (id: string): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORES.PLANS, 'readwrite');
+  tx.objectStore(STORES.PLANS).delete(id);
 };
