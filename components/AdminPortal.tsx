@@ -6,7 +6,8 @@ import {
   Users, UserPlus, Key, ShieldAlert, CheckCircle2, 
   Settings, Building, Fingerprint, Lock, ShieldCheck,
   CreditCard, MessageSquare, Send, LayoutGrid, ListChecks, Banknote,
-  Mail, Server, Globe, Users as UsersIcon, Shield, Landmark
+  Mail, Server, Globe, Users as UsersIcon, Shield, Landmark,
+  FileCheck, Eye, FileText, X, Camera, AlertTriangle, Crown, Plug, Phone
 } from 'lucide-react';
 
 interface AdminPortalProps {
@@ -18,15 +19,19 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [payments, setPayments] = useState<PaymentRequest[]>([]);
   const [repairs, setRepairs] = useState<RepairJob[]>([]);
-  const [view, setView] = useState<'overview' | 'users' | 'payments' | 'messages' | 'settings'>('overview');
+  const [view, setView] = useState<'overview' | 'users' | 'registries' | 'payments' | 'messages' | 'settings' | 'api'>('overview');
   
   const [newUserInfo, setNewUserInfo] = useState({ username: '', password: '', name: '', company: '', role: 'staff' as UserRole });
   const [bankDetails, setBankDetails] = useState({ bank: '', account: '', name: '' });
   const [smtpConfig, setSmtpConfig] = useState({ host: '', port: '', user: '', pass: '', secure: true });
   const [emailRouting, setEmailRouting] = useState<Record<string, { cc: string, bcc: string }>>({});
+  const [ninConfig, setNinConfig] = useState({ apiKey: '', endpoint: '' });
+  const [cacConfig, setCacConfig] = useState({ apiKey: '', endpoint: '' });
   
   const [messageForm, setMessageForm] = useState({ target: 'ALL', content: '' });
   const [msg, setMsg] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+  const [selectedRegistry, setSelectedRegistry] = useState<User | null>(null);
 
   useEffect(() => {
     loadData();
@@ -39,6 +44,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
     const b = await getSetting('bank_details') || { bank: 'Access Bank', account: '0123456789', name: 'RepairGuard HQ' };
     const s = await getSetting('smtp_config') || { host: 'smtp.repairguardai.io', port: '465', user: 'system@repairguardai.io', pass: '', secure: true };
     const er = await getSetting('email_routing') || {};
+    const n = await getSetting('nin_config') || { apiKey: '', endpoint: 'https://api.nin-verifier.ng/v1/verify' };
+    const c = await getSetting('cac_config') || { apiKey: '', endpoint: 'https://api.cac-verifier.ng/v1/search' };
     
     setUsers(u);
     setPayments(p.sort((a,b) => b.timestamp - a.timestamp));
@@ -46,6 +53,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
     setBankDetails(b);
     setSmtpConfig(s);
     setEmailRouting(er);
+    setNinConfig(n);
+    setCacConfig(c);
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -63,6 +72,19 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
     } catch {
       setMsg({ type: 'error', text: 'Authorization failed. Username might already exist.' });
     }
+  };
+
+  const verifyOrganization = async (target: User) => {
+     if (!confirm(`Are you sure you want to verify ${target.company}? This will grant full system access.`)) return;
+     
+     await saveUser({
+        ...target,
+        registrationStatus: 'verified'
+     });
+     
+     await loadData();
+     setSelectedRegistry(null);
+     setMsg({ type: 'success', text: `Organization ${target.company} successfully verified.` });
   };
 
   const approvePayment = async (pay: PaymentRequest) => {
@@ -87,30 +109,55 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
     setMsg({ type: 'success', text: 'Message dispatched.' });
   };
 
-  const saveSettings = async (type: 'bank' | 'smtp' | 'routing') => {
+  const saveSettings = async (type: 'bank' | 'smtp' | 'routing' | 'nin' | 'cac') => {
     if (type === 'bank') await setSetting('bank_details', bankDetails);
     if (type === 'smtp') await setSetting('smtp_config', smtpConfig);
     if (type === 'routing') await setSetting('email_routing', emailRouting);
+    if (type === 'nin') await setSetting('nin_config', ninConfig);
+    if (type === 'cac') await setSetting('cac_config', cacConfig);
     setMsg({ type: 'success', text: `${type.toUpperCase()} configuration updated.` });
   };
 
+  const renderDoc = (dataUrl?: string) => {
+    if (!dataUrl) return <div className="text-slate-400 font-bold text-xs uppercase flex items-center justify-center h-full">No Document Uploaded</div>;
+    
+    if (dataUrl.startsWith('data:application/pdf')) {
+       return <iframe src={dataUrl} className="w-full h-[500px] rounded-xl bg-white border border-slate-200" title="Document PDF" />;
+    }
+    return <img src={dataUrl} className="max-w-full max-h-[500px] object-contain rounded-xl mx-auto" alt="Document Evidence" />;
+  };
+
   const companies = Array.from(new Set(users.map(u => u.company)));
+  const isSuperAdmin = user.role === 'super_admin';
+
+  // Role-Based Tab Definition
+  const availableTabs = [
+    { id: 'overview', icon: <LayoutGrid />, label: 'Overview', restricted: false },
+    { id: 'registries', icon: <FileCheck />, label: 'Registries', restricted: false },
+    { id: 'payments', icon: <CreditCard />, label: 'Payments', restricted: false },
+    { id: 'messages', icon: <MessageSquare />, label: 'HQ Comms', restricted: false },
+    // Restricted Tabs
+    { id: 'users', icon: <Users />, label: 'Personnel', restricted: true },
+    { id: 'settings', icon: <Settings />, label: 'Config', restricted: true },
+    { id: 'api', icon: <Plug />, label: 'API Integrations', restricted: true },
+  ].filter(tab => !tab.restricted || isSuperAdmin);
 
   return (
     <div className="space-y-8 pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 tracking-tight">HQ Command</h1>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+            HQ Command
+            {isSuperAdmin && (
+              <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center">
+                <Crown className="w-3 h-3 mr-1" /> Super Admin
+              </span>
+            )}
+          </h1>
           <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">Global Intelligence & Asset Control</p>
         </div>
-        <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
-          {[
-            { id: 'overview', icon: <LayoutGrid />, label: 'Overview' },
-            { id: 'users', icon: <Users />, label: 'Personnel' },
-            { id: 'payments', icon: <CreditCard />, label: 'Payments' },
-            { id: 'messages', icon: <MessageSquare />, label: 'HQ Comms' },
-            { id: 'settings', icon: <Settings />, label: 'Config' },
-          ].map(tab => (
+        <div className="flex bg-white p-1 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto custom-scrollbar">
+          {availableTabs.map(tab => (
             <button 
               key={tab.id}
               onClick={() => setView(tab.id as any)}
@@ -150,8 +197,208 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
         </div>
       )}
 
-      {view === 'settings' && (
-        <div className="space-y-12">
+      {view === 'registries' && (
+        <>
+          <div className="grid grid-cols-1 gap-6">
+            {users.filter(u => u.cacNumber).map(u => (
+               <div key={u.id} className={`bg-white p-8 rounded-[2.5rem] border-2 shadow-xl flex flex-col md:flex-row justify-between gap-6 animate-in fade-in slide-in-from-bottom-2 ${u.registrationStatus === 'pending_verification' ? 'border-amber-400/50 shadow-amber-500/10' : 'border-slate-200'}`}>
+                 <div>
+                    <h3 className="text-xl font-black text-slate-900">{u.company}</h3>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <span className="text-xs font-bold text-slate-500">{u.name}</span>
+                      <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-black uppercase">{u.role}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4">
+                       <div>
+                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">CAC Number</p>
+                         <p className="font-mono text-sm font-bold">{u.cacNumber}</p>
+                       </div>
+                       <div>
+                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">NDPC Status</p>
+                         <p className={`text-sm font-bold ${u.ndpcStatus === 'Registered' ? 'text-emerald-600' : 'text-amber-600'}`}>{u.ndpcStatus || 'N/A'}</p>
+                       </div>
+                       <div className="col-span-2">
+                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Address</p>
+                         <p className="text-sm font-bold truncate">{u.businessAddress}</p>
+                       </div>
+                    </div>
+                 </div>
+                 
+                 <div className="flex flex-col justify-center space-y-3 min-w-[200px]">
+                    <button onClick={() => setSelectedRegistry(u)} className="w-full py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center space-x-2 hover:bg-blue-600 transition-colors shadow-lg">
+                       <Eye className="w-4 h-4" /> <span>Inspect Documents</span>
+                    </button>
+                    {u.registrationStatus === 'pending_verification' ? (
+                       <div className="flex items-center justify-center space-x-2 text-[10px] font-black text-amber-500 bg-amber-50 py-2 rounded-xl border border-amber-100 animate-pulse">
+                          <AlertTriangle className="w-3 h-3" />
+                          <span>Action Required</span>
+                       </div>
+                    ) : (
+                       <div className="flex items-center justify-center space-x-2 text-[10px] font-bold text-emerald-500">
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>System Verified</span>
+                       </div>
+                    )}
+                 </div>
+               </div>
+            ))}
+            {users.filter(u => u.cacNumber).length === 0 && (
+               <div className="p-20 text-center text-slate-300">
+                  <FileCheck className="w-16 h-16 mx-auto mb-4 opacity-10" />
+                  <p className="font-black uppercase tracking-widest text-xs">No registered entities found</p>
+               </div>
+            )}
+          </div>
+
+          {/* Document Inspector Modal */}
+          {selectedRegistry && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
+               <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-[3rem] p-8 shadow-2xl overflow-hidden flex flex-col">
+                  <div className="flex justify-between items-center mb-6 shrink-0">
+                     <div>
+                       <h3 className="text-2xl font-black text-slate-900">Compliance Audit</h3>
+                       <p className="text-sm font-bold text-slate-500">{selectedRegistry.company} • {selectedRegistry.cacNumber}</p>
+                     </div>
+                     <button onClick={() => setSelectedRegistry(null)} className="p-3 bg-slate-100 hover:bg-rose-100 hover:text-rose-600 rounded-full transition-colors">
+                        <X className="w-6 h-6" />
+                     </button>
+                  </div>
+                  
+                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-8 p-2">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       {/* CAC Document */}
+                       <div className="space-y-3">
+                          <div className="flex items-center space-x-2 text-blue-600">
+                             <FileText className="w-5 h-5" />
+                             <span className="font-black uppercase tracking-widest text-xs">Certificate of Incorporation</span>
+                          </div>
+                          <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 min-h-[200px] flex items-center justify-center relative group">
+                             {renderDoc(selectedRegistry.cacDocument)}
+                          </div>
+                       </div>
+
+                       {/* NDPC Document */}
+                       <div className="space-y-3">
+                          <div className="flex items-center space-x-2 text-emerald-600">
+                             <ShieldCheck className="w-5 h-5" />
+                             <span className="font-black uppercase tracking-widest text-xs">NDPC Audit Report</span>
+                          </div>
+                          <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 min-h-[200px] flex items-center justify-center relative group">
+                             {renderDoc(selectedRegistry.ndpcDocument)}
+                          </div>
+                       </div>
+                     </div>
+
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4 border-t border-slate-100">
+                       {/* Government ID */}
+                       <div className="space-y-3">
+                          <div className="flex items-center space-x-2 text-indigo-600">
+                             <CreditCard className="w-5 h-5" />
+                             <span className="font-black uppercase tracking-widest text-xs">Government ID</span>
+                          </div>
+                          <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 min-h-[200px] flex items-center justify-center relative group">
+                             {renderDoc(selectedRegistry.governmentId)}
+                          </div>
+                       </div>
+
+                       {/* Biometric Selfie */}
+                       <div className="space-y-3">
+                          <div className="flex items-center space-x-2 text-purple-600">
+                             <Camera className="w-5 h-5" />
+                             <span className="font-black uppercase tracking-widest text-xs">Biometric Selfie</span>
+                          </div>
+                          <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl p-4 min-h-[200px] flex items-center justify-center relative group">
+                             {renderDoc(selectedRegistry.biometricSelfie)}
+                          </div>
+                       </div>
+                     </div>
+                     
+                     <div className="grid grid-cols-2 gap-4 bg-slate-50 p-6 rounded-3xl">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase">Data Protection Officer</p>
+                          <p className="font-bold">{selectedRegistry.dpoName || 'Not Assigned'}</p>
+                          <p className="text-xs text-blue-600">{selectedRegistry.dpoEmail}</p>
+                        </div>
+                        <div>
+                           <p className="text-[10px] font-black text-slate-400 uppercase">NDPC Reference ID</p>
+                           <p className="font-mono font-bold">{selectedRegistry.ndpcReference || 'Pending'}</p>
+                        </div>
+                     </div>
+                  </div>
+
+                  {/* Verification Action Bar */}
+                  {selectedRegistry.registrationStatus !== 'verified' && (
+                     <div className="mt-6 pt-6 border-t border-slate-100 flex justify-end space-x-4 shrink-0">
+                        <button onClick={() => setSelectedRegistry(null)} className="px-8 py-4 rounded-2xl font-black text-slate-500 bg-slate-100 uppercase text-xs tracking-widest hover:bg-slate-200">
+                           Cancel Review
+                        </button>
+                        <button onClick={() => verifyOrganization(selectedRegistry)} className="px-8 py-4 rounded-2xl font-black text-white bg-emerald-600 uppercase text-xs tracking-widest shadow-xl shadow-emerald-500/20 hover:bg-emerald-700 flex items-center space-x-2">
+                           <ShieldCheck className="w-5 h-5" />
+                           <span>VERIFY & APPROVE ORGANIZATION</span>
+                        </button>
+                     </div>
+                  )}
+               </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {view === 'api' && isSuperAdmin && (
+        <div className="space-y-12 animate-in fade-in">
+          <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-200">
+             <h3 className="text-xl font-black mb-8 flex items-center space-x-3 text-indigo-600">
+               <Plug className="w-6 h-6" /> <span>External API Gateways</span>
+             </h3>
+             <div className="space-y-8">
+               {/* NIN Section */}
+               <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                 <h4 className="text-sm font-black text-slate-900 uppercase mb-4 flex items-center space-x-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    <span>National Identity (NIN) Verifier</span>
+                 </h4>
+                 <div className="space-y-4">
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black text-slate-400 uppercase px-2">API Endpoint URL</label>
+                     <input className="w-full px-4 py-3 bg-white border rounded-xl font-bold" value={ninConfig.endpoint} onChange={e => setNinConfig({...ninConfig, endpoint: e.target.value})} placeholder="https://api.nin-verifier.ng/v1/verify" />
+                   </div>
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black text-slate-400 uppercase px-2">API Secret Key</label>
+                     <input type="password" className="w-full px-4 py-3 bg-white border rounded-xl font-bold font-mono" value={ninConfig.apiKey} onChange={e => setNinConfig({...ninConfig, apiKey: e.target.value})} placeholder="sk_live_..." />
+                   </div>
+                   <button onClick={() => saveSettings('nin')} className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl shadow-lg mt-2 flex items-center justify-center space-x-2 hover:bg-indigo-700 transition-colors">
+                      <CheckCircle2 className="w-4 h-4" /> <span>SAVE NIN CONFIGURATION</span>
+                   </button>
+                 </div>
+               </div>
+
+               {/* CAC Section */}
+               <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                 <h4 className="text-sm font-black text-slate-900 uppercase mb-4 flex items-center space-x-2">
+                    <Building className="w-4 h-4 text-blue-500" />
+                    <span>CAC Business Verification</span>
+                 </h4>
+                 <div className="space-y-4">
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black text-slate-400 uppercase px-2">API Endpoint URL</label>
+                     <input className="w-full px-4 py-3 bg-white border rounded-xl font-bold" value={cacConfig.endpoint} onChange={e => setCacConfig({...cacConfig, endpoint: e.target.value})} placeholder="https://api.cac-verifier.ng/v1/search" />
+                   </div>
+                   <div className="space-y-1">
+                     <label className="text-[10px] font-black text-slate-400 uppercase px-2">API Secret Key</label>
+                     <input type="password" className="w-full px-4 py-3 bg-white border rounded-xl font-bold font-mono" value={cacConfig.apiKey} onChange={e => setCacConfig({...cacConfig, apiKey: e.target.value})} placeholder="sk_live_..." />
+                   </div>
+                   <button onClick={() => saveSettings('cac')} className="w-full bg-blue-600 text-white font-black py-4 rounded-xl shadow-lg mt-2 flex items-center justify-center space-x-2 hover:bg-blue-700 transition-colors">
+                      <CheckCircle2 className="w-4 h-4" /> <span>SAVE CAC CONFIGURATION</span>
+                   </button>
+                 </div>
+               </div>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {view === 'settings' && isSuperAdmin && (
+        <div className="space-y-12 animate-in fade-in">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {/* SMTP Config */}
             <div className="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-200">
@@ -264,9 +511,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
         </div>
       )}
       
-      {/* Existing views (users, payments, messages) remain as is... */}
-      {view === 'users' && (
-        <div className="space-y-8">
+      {view === 'users' && isSuperAdmin && (
+        <div className="space-y-8 animate-in fade-in">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-xl border border-slate-200">
             <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center space-x-2">
               <UserPlus className="w-5 h-5 text-blue-600" />
@@ -282,8 +528,8 @@ const AdminPortal: React.FC<AdminPortalProps> = ({ user, onUserUpdate }) => {
                 <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm" value={newUserInfo.company} onChange={e => setNewUserInfo({...newUserInfo, company: e.target.value})} placeholder="Company Name" />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase px-2">Login ID</label>
-                <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm" value={newUserInfo.username} onChange={e => setNewUserInfo({...newUserInfo, username: e.target.value})} placeholder="Unique ID" />
+                <label className="text-[10px] font-black text-slate-400 uppercase px-2">Phone Number (Login ID)</label>
+                <input required className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm" value={newUserInfo.username} onChange={e => setNewUserInfo({...newUserInfo, username: e.target.value})} placeholder="080 1234 5678" />
               </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase px-2">Access Key</label>

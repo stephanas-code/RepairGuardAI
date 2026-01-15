@@ -1,14 +1,17 @@
 
-import { RepairJob, User, PaymentRequest, AdminMessage } from './types';
+import { RepairJob, User, PaymentRequest, AdminMessage, SMSLog, DraftRepair } from './types';
 
-const DB_NAME = 'RepairGuardDB_v3';
-const DB_VERSION = 3;
+const DB_NAME = 'RepairGuardDB_v4';
+const DB_VERSION = 6; // Incremented for drafts
 const STORES = {
   REPAIRS: 'repairs',
   USERS: 'users',
   SETTINGS: 'app_settings',
   PAYMENTS: 'payments',
-  MESSAGES: 'messages'
+  MESSAGES: 'messages',
+  COMPLIANCE: 'compliance_logs',
+  SMS: 'sms_logs',
+  DRAFTS: 'drafts'
 };
 
 export const initDB = (): Promise<IDBDatabase> => {
@@ -32,6 +35,15 @@ export const initDB = (): Promise<IDBDatabase> => {
       if (!db.objectStoreNames.contains(STORES.MESSAGES)) {
         db.createObjectStore(STORES.MESSAGES, { keyPath: 'id' });
       }
+      if (!db.objectStoreNames.contains(STORES.COMPLIANCE)) {
+        db.createObjectStore(STORES.COMPLIANCE, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.SMS)) {
+        db.createObjectStore(STORES.SMS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.DRAFTS)) {
+        db.createObjectStore(STORES.DRAFTS, { keyPath: 'id' });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
@@ -45,6 +57,16 @@ export const saveUser = async (user: User): Promise<void> => {
     tx.objectStore(STORES.USERS).put(user);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
+  });
+};
+
+export const logComplianceEvent = async (event: { action: string, data: any }): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORES.COMPLIANCE, 'readwrite');
+  tx.objectStore(STORES.COMPLIANCE).put({
+    id: `log-${Date.now()}-${Math.random()}`,
+    timestamp: Date.now(),
+    ...event
   });
 };
 
@@ -151,4 +173,47 @@ export const getSetting = async (key: string): Promise<any> => {
     const request = tx.objectStore(STORES.SETTINGS).get(key);
     request.onsuccess = () => resolve(request.result?.value || null);
   });
+};
+
+export const saveSMS = async (sms: SMSLog): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORES.SMS, 'readwrite');
+  tx.objectStore(STORES.SMS).put(sms);
+};
+
+export const getSMSForRepair = async (repairId: string): Promise<SMSLog[]> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORES.SMS, 'readonly');
+    const request = tx.objectStore(STORES.SMS).getAll();
+    request.onsuccess = () => {
+      const all = request.result as SMSLog[];
+      resolve(all.filter(s => s.repairId === repairId).sort((a,b) => b.timestamp - a.timestamp));
+    };
+  });
+};
+
+// Draft Functions
+export const saveDraft = async (draft: DraftRepair): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORES.DRAFTS, 'readwrite');
+  tx.objectStore(STORES.DRAFTS).put(draft);
+};
+
+export const getDraftsForCompany = async (company: string): Promise<DraftRepair[]> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORES.DRAFTS, 'readonly');
+    const request = tx.objectStore(STORES.DRAFTS).getAll();
+    request.onsuccess = () => {
+      const all = request.result as DraftRepair[];
+      resolve(all.filter(d => d.company === company).sort((a,b) => b.timestamp - a.timestamp));
+    };
+  });
+};
+
+export const deleteDraft = async (id: string): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORES.DRAFTS, 'readwrite');
+  tx.objectStore(STORES.DRAFTS).delete(id);
 };
