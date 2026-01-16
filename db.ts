@@ -1,8 +1,8 @@
 
-import { RepairJob, User, PaymentRequest, AdminMessage, SMSLog, DraftRepair, SubscriptionPlan } from './types';
+import { RepairJob, User, PaymentRequest, AdminMessage, SMSLog, DraftRepair, SubscriptionPlan, TIER_FEATURES } from './types';
 
-const DB_NAME = 'RepairGuardDB_v4';
-const DB_VERSION = 7; // Incremented for plans
+const DB_NAME = 'RepairGuardDB_v5'; // Incremented for new schema
+const DB_VERSION = 8;
 const STORES = {
   REPAIRS: 'repairs',
   USERS: 'users',
@@ -18,7 +18,7 @@ const STORES = {
 export const initDB = (): Promise<IDBDatabase> => {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = (event) => {
+    request.onupgradeneeded = async (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       if (!db.objectStoreNames.contains(STORES.REPAIRS)) {
         db.createObjectStore(STORES.REPAIRS, { keyPath: 'id' });
@@ -46,7 +46,54 @@ export const initDB = (): Promise<IDBDatabase> => {
         db.createObjectStore(STORES.DRAFTS, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains(STORES.PLANS)) {
-        db.createObjectStore(STORES.PLANS, { keyPath: 'id' });
+        const planStore = db.createObjectStore(STORES.PLANS, { keyPath: 'id' });
+        // Seed Default Plans
+        const defaultPlans: SubscriptionPlan[] = [
+          {
+            id: 'free',
+            name: 'Tier 0 - Free Trial',
+            price: 0,
+            durationDays: 30, // Perpetual renewal logic handled in app
+            description: 'Adoption & Learning. Limited to 5 jobs/mo. Watermarked records.',
+            features: ['5 Jobs/Month', 'Basic Logging', 'Unverified Records'],
+            tierLevel: 0,
+            isActive: true
+          },
+          {
+            id: 'basic',
+            name: 'Tier 1 - Basic',
+            price: 3000,
+            durationDays: 30,
+            description: 'Small shops. Unlimited records, AI suggestions, SMS, Trust Receipts.',
+            features: ['Unlimited Jobs', 'AI Suggestions', 'SMS Notifications', 'QR Trust Receipt'],
+            tierLevel: 1,
+            isActive: true
+          },
+          {
+            id: 'pro',
+            name: 'Tier 2 - Pro',
+            price: 7000,
+            durationDays: 30,
+            description: 'Professional Workshops. Dispute mode, evidence hash-chain, PDF export.',
+            features: ['Dispute Mode', 'Evidence Hash-Chain', 'PDF Export', 'Priority Support'],
+            tierLevel: 2,
+            isActive: true
+          },
+          {
+            id: 'enterprise',
+            name: 'Tier 3 - Enterprise',
+            price: 15000,
+            durationDays: 30,
+            description: 'Legal Shield. Court-ready export, NDPC Audit support, Custom retention.',
+            features: ['Justice Mode', 'NDPC Audit Pkg', 'SLA Support', 'Multi-branch'],
+            tierLevel: 3,
+            isActive: true
+          }
+        ];
+        
+        // Cannot use await inside upgradeneeded for put operations in the same transaction easily
+        // But for object store creation, we populate initial data
+        defaultPlans.forEach(plan => planStore.put(plan));
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -96,6 +143,19 @@ export const getAllUsers = async (): Promise<User[]> => {
   });
 };
 
+export const getUsersByCompany = async (company: string): Promise<User[]> => {
+  const db = await initDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORES.USERS, 'readonly');
+    const request = tx.objectStore(STORES.USERS).getAll();
+    request.onsuccess = () => {
+        const all = request.result as User[];
+        resolve(all.filter(u => u.company === company));
+    };
+    request.onerror = () => reject(request.error);
+  });
+};
+
 export const saveRepair = async (job: RepairJob): Promise<void> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
@@ -106,7 +166,7 @@ export const saveRepair = async (job: RepairJob): Promise<void> => {
   });
 };
 
-export const getRepairsForUser = async (userId: string, role: string): Promise<RepairJob[]> => {
+export const getRepairsForUser = async (user: User): Promise<RepairJob[]> => {
   const db = await initDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORES.REPAIRS, 'readonly');
@@ -114,8 +174,9 @@ export const getRepairsForUser = async (userId: string, role: string): Promise<R
     const request = store.getAll();
     request.onsuccess = () => {
       const all = request.result as RepairJob[];
-      if (role === 'admin') resolve(all);
-      else resolve(all.filter(job => job.userId === userId));
+      if (user.role === 'super_admin' || user.role === 'admin') resolve(all);
+      else if (user.role === 'manager') resolve(all.filter(job => job.company === user.company));
+      else resolve(all.filter(job => job.userId === user.id));
     };
     request.onerror = () => reject(request.error);
   });
@@ -159,7 +220,11 @@ export const getMessagesForCompany = async (company: string): Promise<AdminMessa
     const request = tx.objectStore(STORES.MESSAGES).getAll();
     request.onsuccess = () => {
       const all = request.result as AdminMessage[];
-      resolve(all.filter(m => m.toCompany === 'ALL' || m.toCompany === company));
+      resolve(all.filter(m => 
+        m.toCompany === 'ALL' || 
+        m.toCompany === company || 
+        (m.toCompany === 'HQ' && m.senderCompany === company) // Include sent messages
+      ));
     };
   });
 };
@@ -243,8 +308,44 @@ export const getAllPlans = async (): Promise<SubscriptionPlan[]> => {
   });
 };
 
+export const getPlanById = async (id: string): Promise<SubscriptionPlan | null> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORES.PLANS, 'readonly');
+    const request = tx.objectStore(STORES.PLANS).get(id);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => resolve(null);
+  });
+};
+
 export const deletePlan = async (id: string): Promise<void> => {
   const db = await initDB();
   const tx = db.transaction(STORES.PLANS, 'readwrite');
   tx.objectStore(STORES.PLANS).delete(id);
+};
+
+// Helper to check and reset job count for monthly limits
+export const checkJobLimit = async (user: User): Promise<{ allowed: boolean, user: User }> => {
+    const now = Date.now();
+    const lastReset = user.lastJobReset || 0;
+    const oneMonth = 30 * 24 * 60 * 60 * 1000;
+    
+    let updatedUser = { ...user };
+    
+    // Reset if month has passed
+    if (now - lastReset > oneMonth) {
+        updatedUser.jobsCreatedThisMonth = 0;
+        updatedUser.lastJobReset = now;
+        await saveUser(updatedUser);
+    }
+
+    const currentPlanId = updatedUser.currentPlanId || 'free';
+    // Free tier limit is 5
+    if (currentPlanId === 'free') {
+        if ((updatedUser.jobsCreatedThisMonth || 0) >= TIER_FEATURES.FREE.limitJobs) {
+            return { allowed: false, user: updatedUser };
+        }
+    }
+
+    return { allowed: true, user: updatedUser };
 };

@@ -1,9 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { DeviceCategory, RepairJob, AISuggestion, User, PaymentRequest, AdminMessage, DraftRepair, SubscriptionPlan } from '../types';
+import { DeviceCategory, RepairJob, AISuggestion, User, PaymentRequest, AdminMessage, DraftRepair, SubscriptionPlan, TIER_FEATURES } from '../types';
 import { analyzeFault } from '../geminiService';
 import { signRecord } from '../cryptoUtils';
-import { getAllRepairs, getSetting, savePayment, getMessagesForCompany, saveUser, saveSMS, saveDraft, deleteDraft, getAllPlans } from '../db';
+import { getAllRepairs, getSetting, savePayment, getMessagesForCompany, saveUser, saveSMS, saveDraft, deleteDraft, getAllPlans, checkJobLimit } from '../db';
+import TrustReceipt from './TrustReceipt';
 import { 
   Smartphone, Laptop, Printer, Tablet, Package, User as UserIcon, Phone, 
   Tag, Terminal, CheckCircle2, ShieldCheck, Sparkles, PlusCircle, 
@@ -42,10 +43,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   const [messages, setMessages] = useState<AdminMessage[]>([]);
   
   const [showPaywall, setShowPaywall] = useState(false);
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
-  const [bankDetails, setBankDetails] = useState({ bank: '', account: '', name: '' });
-  const [paymentStep, setPaymentStep] = useState<'plan' | 'bank' | 'done'>('plan');
+  const [paywallReason, setPaywallReason] = useState('');
 
   const [sigMode, setSigMode] = useState<{client: 'draw' | 'type', tech: 'draw' | 'type'}>({ client: 'draw', tech: 'draw' });
   const [typedSigs, setTypedSigs] = useState({ client: '', tech: '' });
@@ -56,6 +54,13 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   const techCanvasRef = useRef<HTMLCanvasElement>(null);
   const [activeCanvas, setActiveCanvas] = useState<'client' | 'tech' | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+
+  // Receipt Modal State
+  const [generatedJob, setGeneratedJob] = useState<RepairJob | null>(null);
+
+  // Feature Flags
+  const currentTierId = user.currentPlanId ? user.currentPlanId.toUpperCase() : 'FREE';
+  const features = TIER_FEATURES[currentTierId as keyof typeof TIER_FEATURES] || TIER_FEATURES.FREE;
 
   useEffect(() => {
     if (initialData) {
@@ -79,7 +84,6 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       setSuggestions(initialData.aiSuggestions || []);
       setDraftId(initialData.id);
     } else {
-      // Reset form if initialData is explicitly null (switching to New Asset)
       setFormData({
         clientName: '', clientPhone: '', clientEmail: '',
         category: 'Phone', brand: '', model: '',
@@ -96,6 +100,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       setShowPaywall(false);
       setAiLoading(false);
       setActiveCamera(null);
+      setGeneratedJob(null);
     }
   }, [initialData]);
 
@@ -105,37 +110,16 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   }, [user]);
 
   const loadContext = async () => {
-    const b = await getSetting('bank_details') || { bank: 'Access Bank', account: '0123456789', name: 'RepairGuard HQ' };
     const m = await getMessagesForCompany(user.company);
-    const p = await getAllPlans();
-    setBankDetails(b);
     setMessages(m);
-    
-    // Set plans or default if none exist
-    if (p.length > 0) {
-      setPlans(p);
-    } else {
-      setPlans([
-        { id: 'def1', name: '2 Weeks', price: 5000, durationDays: 14, description: 'Standard Access', isActive: true },
-        { id: 'def2', name: '1 Month', price: 9000, durationDays: 30, description: 'Extended Access', isActive: true }
-      ]);
-    }
   };
 
-  const checkAIEligibility = (): boolean => {
-    const isSubscribed = user.subscriptionExpiry && user.subscriptionExpiry > Date.now();
-    if (isSubscribed) return true;
-    const usage = user.aiUsageCount || 0;
-    if (usage < 10) return true;
-    return false;
-  };
-
-  // Camera Functions
+  // ... (Camera functions same as before)
   const startCamera = async (type: 'front' | 'back') => {
     setActiveCamera(type);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } // Prefer back camera for asset photos
+        video: { facingMode: 'environment' }
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -184,7 +168,9 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   const startAnalysis = async () => {
     if (!formData.fault || !isOnline) return;
     
-    if (!checkAIEligibility()) {
+    // Feature Check
+    if (!features.allowAI) {
+      setPaywallReason("AI Diagnostics requires Basic Plan or higher.");
       setShowPaywall(true);
       return;
     }
@@ -193,7 +179,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
     const results = await analyzeFault(formData.category, formData.brand, formData.model, formData.fault, formData.initialCondition);
     setSuggestions(results);
     
-    // Increment usage count and update user
+    // Usage count tracking remains for analytical purposes, even if unlimited in higher tiers
     const updatedUser = { ...user, aiUsageCount: (user.aiUsageCount || 0) + 1 };
     await saveUser(updatedUser);
     if (onUserUpdate) {
@@ -203,24 +189,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
     setAiLoading(false);
   };
 
-  const handlePaymentConfirm = async () => {
-    if (!selectedPlan) return;
-    const payId = `pay-${Date.now()}`;
-    await savePayment({
-      id: payId,
-      userId: user.id,
-      userName: user.name,
-      company: user.company,
-      amount: selectedPlan.price,
-      confirmedAmount: selectedPlan.price,
-      plan: selectedPlan.name,
-      durationDays: selectedPlan.durationDays,
-      status: 'pending',
-      timestamp: Date.now()
-    });
-    setPaymentStep('done');
-  };
-
+  // ... (Signature functions same as before)
   const generateTypedSignature = (name: string): string | null => {
     if (!name.trim()) return null;
     const canvas = document.createElement('canvas');
@@ -315,11 +284,11 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       timestamp: Date.now(),
       devicePhotoFront: photos.front,
       devicePhotoBack: photos.back,
-      aiSuggestions: suggestions // Persist AI diagnosis
+      aiSuggestions: suggestions 
     };
 
     await saveDraft(draft);
-    setDraftId(idToUse); // Prevent duplication
+    setDraftId(idToUse);
     alert('Form saved to Drafts.');
   };
 
@@ -327,6 +296,20 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
     e.preventDefault();
     if (!ndprConsent) return alert("NDPR Consent Required for forensic audit trail.");
     if (!clientSignature || !techSignature) return alert("Signatures are required to seal the digital contract.");
+
+    // Check Job Limits
+    const limitCheck = await checkJobLimit(user);
+    if (!limitCheck.allowed) {
+        setPaywallReason(`Free Tier limit (5 jobs/month) reached. Please upgrade to Basic.`);
+        setShowPaywall(true);
+        if (onUserUpdate) onUserUpdate(limitCheck.user);
+        return;
+    }
+    
+    // Update user stats
+    const updatedUserStats = { ...limitCheck.user, jobsCreatedThisMonth: (limitCheck.user.jobsCreatedThisMonth || 0) + 1 };
+    await saveUser(updatedUserStats);
+    if (onUserUpdate) onUserUpdate(updatedUserStats);
 
     const repairs = await getAllRepairs();
     const prevHash = repairs.length > 0 ? repairs[0].recordHash : "0xGENESIS";
@@ -355,7 +338,8 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       devicePhotoBack: photos.back
     };
 
-    if (formData.clientPhone) {
+    // Auto-save SMS to log ONLY if allowed
+    if (formData.clientPhone && features.allowSMS) {
       await saveSMS({
         id: `sms-${Date.now()}`,
         repairId: newJob.id,
@@ -371,107 +355,72 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       await deleteDraft(draftId);
     }
 
-    onSubmit(newJob);
+    setGeneratedJob(newJob);
+  };
+
+  const handleReceiptClose = () => {
+    if (generatedJob) {
+      onSubmit(generatedJob);
+      setGeneratedJob(null);
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!generatedJob) return;
+    
+    const message = `🔐 *Repair Trust Receipt*\n` +
+      `📍 ${generatedJob.company}\n` +
+      `📱 ${generatedJob.deviceBrand} ${generatedJob.deviceModel}\n` +
+      `📅 ${new Date(generatedJob.createdAt).toLocaleDateString()}\n` +
+      `🆔 Ref: ${generatedJob.id}\n\n` +
+      `*Fault:* ${generatedJob.faultDescription}\n` +
+      `*Deposit:* ₦${generatedJob.initialDeposit.toLocaleString()}\n\n` +
+      `Track your repair status securely: https://receipt.repairguard.ai/verify/${generatedJob.id}\n\n` +
+      `*Protected by RepairGuardAI*`;
+
+    const encoded = encodeURIComponent(message);
+    let phone = generatedJob.clientPhone.replace(/\s+/g, '');
+    if (phone.startsWith('0')) phone = '234' + phone.substring(1);
+    
+    window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
   };
 
   return (
     <div className="space-y-8 pb-20 animate-in fade-in duration-500">
-      {/* HQ Notifications */}
-      {messages.length > 0 && (
-        <div className="space-y-4">
-          {messages.map(m => (
-            <div key={m.id} className="bg-gradient-to-r from-blue-600 to-indigo-700 p-6 rounded-[2rem] text-white flex items-center space-x-6 shadow-2xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><MessageSquare className="w-20 h-20" /></div>
-              <div className="p-4 bg-white/20 rounded-2xl backdrop-blur-md"><MessageSquare className="w-8 h-8" /></div>
-              <div className="relative z-10">
-                <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-70">Security Directive</p>
-                <p className="text-base font-black leading-tight mt-1">{m.content}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+      
+      {/* Trust Receipt Modal */}
+      {generatedJob && (
+        <TrustReceipt 
+          job={generatedJob} 
+          user={user}
+          onClose={handleReceiptClose}
+          onWhatsApp={handleSendWhatsApp}
+          onPrint={() => window.print()}
+        />
       )}
 
       {/* Paywall Overlay */}
       {showPaywall && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 relative overflow-hidden shadow-2xl">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] p-8 relative overflow-hidden shadow-2xl text-center">
              <button onClick={() => setShowPaywall(false)} className="absolute top-6 right-6 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
                <X className="w-5 h-5" />
              </button>
-             
-             {paymentStep === 'plan' && (
-               <div className="space-y-6">
-                 <div className="text-center">
-                   <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-4">
-                     <Sparkles className="w-8 h-8" />
-                   </div>
-                   <h3 className="text-2xl font-black text-slate-900">Unlock AI Diagnostics</h3>
-                   <p className="text-sm text-slate-500 font-bold mt-2">Free quota exceeded. Choose a forensic pass.</p>
-                 </div>
-                 
-                 <div className="grid grid-cols-2 gap-4">
-                    {plans.map(plan => (
-                      <button 
-                        key={plan.id}
-                        onClick={() => { setSelectedPlan(plan); setPaymentStep('bank'); }}
-                        className="p-6 rounded-3xl border-2 border-slate-100 hover:border-blue-500 hover:bg-blue-50 transition-all group text-left flex flex-col justify-between"
-                      >
-                        <div>
-                           <p className="text-xs font-black text-slate-400 uppercase tracking-widest">{plan.name}</p>
-                           <p className="text-[10px] font-bold text-blue-600 mt-1">{plan.durationDays} Days</p>
-                        </div>
-                        <p className="text-2xl font-black text-slate-900 mt-4">₦{plan.price.toLocaleString()}</p>
-                      </button>
-                    ))}
-                 </div>
-               </div>
-             )}
-
-             {paymentStep === 'bank' && selectedPlan && (
-                <div className="space-y-6">
-                   <div className="text-center">
-                     <h3 className="text-xl font-black text-slate-900">Bank Transfer</h3>
-                     <p className="text-xs text-slate-500 font-bold mt-1">Transfer ₦{selectedPlan.price.toLocaleString()} to activate.</p>
-                   </div>
-                   
-                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-200 text-center space-y-2">
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Bank Name</p>
-                      <p className="font-black text-lg">{bankDetails.bank}</p>
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mt-2">Account Number</p>
-                      <p className="font-black text-2xl font-mono tracking-wider text-blue-600 select-all">{bankDetails.account}</p>
-                      <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mt-2">Beneficiary</p>
-                      <p className="font-black">{bankDetails.name}</p>
-                   </div>
-
-                   <button 
-                     onClick={handlePaymentConfirm} 
-                     className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-500/20 transition-all"
-                   >
-                     I HAVE SENT THE MONEY
-                   </button>
-                   <button onClick={() => setPaymentStep('plan')} className="w-full text-xs font-black text-slate-400 hover:text-slate-600">BACK TO PLANS</button>
-                </div>
-             )}
-             
-             {paymentStep === 'done' && (
-               <div className="text-center space-y-6 py-8">
-                 <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto animate-bounce">
-                   <CheckCircle2 className="w-10 h-10" />
-                 </div>
-                 <div>
-                   <h3 className="text-2xl font-black text-slate-900">Payment Pending</h3>
-                   <p className="text-sm text-slate-500 font-bold mt-2 px-8">Admin will verify your transfer shortly. Access will be restored automatically.</p>
-                 </div>
-                 <button onClick={() => setShowPaywall(false)} className="px-8 py-3 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest">Return to Dashboard</button>
-               </div>
-             )}
+             <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <Sparkles className="w-10 h-10" />
+             </div>
+             <h3 className="text-2xl font-black text-slate-900 mb-2">Upgrade Required</h3>
+             <p className="text-sm font-bold text-slate-500 mb-8">{paywallReason}</p>
+             <button onClick={() => { /* Navigate to plans or instruct user */ alert("Please go to 'My Plan' to upgrade.") }} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-blue-500/30">
+                View Service Plans
+             </button>
           </div>
         </div>
       )}
       
       <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-200">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
+          {/* ... Header content ... */}
           <div className="flex items-center space-x-5">
             <div className="p-4 bg-blue-100 rounded-3xl text-blue-600 shadow-inner">
               <ShieldCheck className="w-10 h-10" />
@@ -481,7 +430,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
               <div className="flex items-center space-x-3 mt-1">
                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">{user.company}</span>
                  <span className="w-1 h-1 bg-slate-200 rounded-full"></span>
-                 <span className="text-[10px] text-blue-600 font-black uppercase tracking-widest">Protocol v4.0</span>
+                 <span className="text-[10px] text-blue-600 font-black uppercase tracking-widest">{currentTierId} TIER</span>
               </div>
             </div>
           </div>
@@ -491,6 +440,11 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
               {isOnline ? <Activity className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
               <span className="text-[10px] font-black uppercase tracking-widest">{isOnline ? 'Network Secured' : 'Isolated Cache'}</span>
             </div>
+            {currentTierId === 'FREE' && (
+                <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                    {user.jobsCreatedThisMonth || 0}/5 Monthly Limit
+                </div>
+            )}
           </div>
         </header>
 
@@ -610,15 +564,18 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-6">
               <textarea required className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-[2rem] text-sm focus:ring-4 focus:ring-blue-100 outline-none min-h-[140px]" value={formData.initialCondition} onChange={e => setFormData({...formData, initialCondition: e.target.value})} placeholder="Describe initial physical state (Scratches, dents, etc.)..." />
               <div className="relative">
-                <textarea required className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-[2rem] text-sm focus:ring-4 focus:ring-blue-100 outline-none min-h-[140px] pr-20" value={formData.fault} onChange={e => setFormData({...formData, fault: e.target.value})} placeholder="Detailed fault description..." />
-                {isOnline ? (
+                <textarea required className="w-full px-6 py-5 bg-slate-50 border border-slate-200 rounded-[2rem] text-sm focus:ring-4 focus:ring-blue-100 outline-none min-h-[140px]" value={formData.fault} onChange={e => setFormData({...formData, fault: e.target.value})} placeholder="Detailed fault description..." />
+                
+                {/* AI Button Logic updated to check features */}
+                {features.allowAI && isOnline ? (
                   <button type="button" onClick={startAnalysis} disabled={aiLoading || !formData.fault} className="absolute bottom-6 right-6 p-4 bg-gradient-to-br from-blue-600 to-indigo-700 text-white rounded-2xl shadow-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-50">
                     {aiLoading ? <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Sparkles className="w-5 h-5" />}
                   </button>
                 ) : (
                   <div className="absolute bottom-6 right-6 p-4 bg-slate-200 text-slate-500 rounded-2xl cursor-not-allowed group">
-                    <WifiOff className="w-5 h-5" />
-                    <div className="absolute bottom-full right-0 mb-2 w-48 bg-slate-900 text-white text-[9px] p-2 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity uppercase font-black text-center">AI Diagnostics Unavailable Offline</div>
+                    <div className="w-5 h-5 relative flex items-center justify-center">
+                        {isOnline ? <Lock className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
+                    </div>
                   </div>
                 )}
               </div>
@@ -644,7 +601,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
             )}
           </section>
 
-          {/* Signature Sections */}
+          {/* Signature Sections (Same as before) ... */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
              <div className="space-y-4">
                <div className="flex justify-between items-center">

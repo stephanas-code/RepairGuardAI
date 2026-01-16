@@ -11,12 +11,52 @@ export const APP_FEATURES = [
   "NDPR Compliance Logging",
   "Cryptographic Record Hashing",
   "Client SMS Notifications",
+  "WhatsApp Trust Receipts",
   "Biometric Officer Auth",
   "Cloud Synchronization",
   "PDF Report Generation",
   "HQ Broadcast Receiver",
   "Justice Mode Evidence Export"
 ];
+
+export const TIER_FEATURES = {
+  FREE: {
+    name: "Free Trial",
+    limitJobs: 5,
+    allowAI: false,
+    allowSMS: false,
+    allowReceipt: false, // Watermarked/Basic only
+    allowLegal: false,
+    allowDispute: false
+  },
+  BASIC: {
+    name: "Basic",
+    limitJobs: Infinity,
+    allowAI: true,
+    allowSMS: true,
+    allowReceipt: true,
+    allowLegal: false,
+    allowDispute: false
+  },
+  PRO: {
+    name: "Pro",
+    limitJobs: Infinity,
+    allowAI: true,
+    allowSMS: true,
+    allowReceipt: true,
+    allowLegal: false,
+    allowDispute: true
+  },
+  ENTERPRISE: {
+    name: "Enterprise",
+    limitJobs: Infinity,
+    allowAI: true,
+    allowSMS: true,
+    allowReceipt: true,
+    allowLegal: true,
+    allowDispute: true
+  }
+};
 
 export interface User {
   id: string;
@@ -27,7 +67,13 @@ export interface User {
   role: UserRole;
   createdAt: number;
   aiUsageCount: number;
+  
+  // Subscription
+  currentPlanId?: string; // 'free', 'basic', 'pro', 'enterprise'
   subscriptionExpiry?: number;
+  jobsCreatedThisMonth?: number; // For Free Tier tracking
+  lastJobReset?: number;
+
   skillLevel?: 'Professional' | 'Apprentice';
   
   // Mandatory Compliance Fields
@@ -39,6 +85,7 @@ export interface User {
   dpoName?: string;
   dpoEmail?: string;
   legalAcceptedTimestamp?: number;
+  lastReadBroadcastTime?: number;
   
   // Document Evidence (Base64)
   cacDocument?: string;
@@ -122,12 +169,13 @@ export interface SyncStats {
 }
 
 export interface SubscriptionPlan {
-  id: string;
+  id: string; // 'free', 'basic', 'pro', 'enterprise'
   name: string;
   price: number;
   durationDays: number;
   description: string;
   features: string[];
+  tierLevel: 0 | 1 | 2 | 3;
   isActive: boolean;
 }
 
@@ -139,6 +187,7 @@ export interface PaymentRequest {
   amount: number;
   confirmedAmount: number;
   plan: string;
+  planId: string;
   durationDays?: number;
   status: PaymentStatus;
   timestamp: number;
@@ -147,9 +196,12 @@ export interface PaymentRequest {
 export interface AdminMessage {
   id: string;
   from: string;
-  toCompany: string;
+  toCompany: string; // 'HQ' for replies, 'ALL' or CompanyName for directives
+  senderCompany?: string; // To easily track which company sent a reply
   content: string;
   timestamp: number;
+  type?: 'directive' | 'reply' | 'complaint';
+  status?: 'pending' | 'reviewing' | 'resolved'; // For complaint tracking
 }
 
 export interface SMSLog {

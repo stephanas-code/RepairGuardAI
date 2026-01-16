@@ -2,10 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { RepairJob, RepairStatus, SMSLog } from '../types';
 import { getSMSForRepair, saveSMS } from '../db';
+import TrustReceipt from './TrustReceipt';
 import { 
   Smartphone, Laptop, Printer, Package, Search, Hash, ShieldCheck, 
   ExternalLink, Phone, Send, Landmark, Shield, Save, Lock, Edit3, 
-  Fingerprint, AlertTriangle, CloudOff, CloudCheck, X, FileText, Scale, MessageSquare, Image
+  Fingerprint, AlertTriangle, CloudOff, CloudCheck, X, FileText, Scale, MessageSquare, Image, CheckCircle2, Maximize2, Minimize2
 } from 'lucide-react';
 
 interface RepairListProps {
@@ -30,6 +31,12 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
   const [smsMessage, setSmsMessage] = useState('');
   const [smsHistory, setSmsHistory] = useState<SMSLog[]>([]);
 
+  // Receipt Modal
+  const [showReceipt, setShowReceipt] = useState(false);
+
+  // Layout State
+  const [isMaximized, setIsMaximized] = useState(false);
+
   useEffect(() => {
     if (selectedJob) {
       const fresh = repairs.find(r => r.id === selectedJob.id);
@@ -49,6 +56,9 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
       setIsDirty(false);
       setShowSealModal(false);
       setShowSMSModal(false);
+      setShowReceipt(false);
+    } else {
+        setIsMaximized(false);
     }
   }, [selectedJob]);
 
@@ -87,6 +97,21 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
     await loadSMS(selectedJob.id);
   };
 
+  const handleSendWhatsAppUpdate = () => {
+    if (!selectedJob) return;
+    const message = `🔔 *Repair Update*\n` +
+      `📍 ${selectedJob.company}\n` +
+      `🆔 Ref: ${selectedJob.id}\n\n` +
+      `*Status:* ${selectedJob.status}\n` +
+      `*Notes:* ${selectedJob.technicianNotes || "Work in progress."}\n\n` +
+      `View receipt: https://receipt.repairguard.ai/verify/${selectedJob.id}`;
+      
+    const encoded = encodeURIComponent(message);
+    let phone = selectedJob.clientPhone.replace(/\s+/g, '');
+    if (phone.startsWith('0')) phone = '234' + phone.substring(1);
+    window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+  };
+
   const handleStatusSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const nextStatus = e.target.value as RepairStatus;
     if (nextStatus === 'Completed' || nextStatus === 'Unrepairable') {
@@ -120,134 +145,6 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
     });
   };
 
-  const handleExportPDF = () => {
-    if (!selectedJob) return;
-
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-          <meta charset="UTF-8">
-          <title>Forensic Report - ${selectedJob.id}</title>
-          <style>
-              body { font-family: 'Courier New', Courier, monospace; padding: 40px; color: #1e293b; }
-              .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 40px; }
-              .logo { font-size: 24px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
-              .meta { font-size: 10px; margin-top: 5px; text-transform: uppercase; }
-              .section { margin-bottom: 30px; }
-              .section-title { font-size: 12px; font-weight: 900; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; padding-bottom: 5px; margin-bottom: 15px; color: #475569; }
-              .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-              .field { margin-bottom: 10px; }
-              .label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #64748b; }
-              .value { font-size: 14px; font-weight: bold; }
-              .box { border: 1px solid #e2e8f0; padding: 15px; border-radius: 8px; background: #f8fafc; }
-              .hash { word-break: break-all; font-family: monospace; font-size: 10px; color: #0f172a; }
-              .footer { margin-top: 50px; text-align: center; font-size: 10px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 20px; }
-              .signatures { display: flex; justify-content: space-between; margin-top: 40px; }
-              .sig-box { text-align: center; width: 40%; }
-              .sig-img { height: 60px; object-fit: contain; margin-bottom: 10px; border-bottom: 1px solid #000; display: block; width: 100%; }
-              .photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
-              .photo-item { text-align: center; }
-              .photo-img { width: 100%; height: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 5px; }
-          </style>
-      </head>
-      <body>
-          <div class="header">
-              <div class="logo">RepairGuard Forensic Report</div>
-              <div class="meta">Case ID: ${selectedJob.id} • ${new Date().toLocaleString()}</div>
-              <div class="meta">Verified Organization: ${selectedJob.company} (${selectedJob.businessCAC})</div>
-          </div>
-
-          <div class="section">
-              <div class="section-title">Client & Asset Information</div>
-              <div class="grid">
-                  <div>
-                      <div class="field"><div class="label">Client Name</div><div class="value">${selectedJob.clientName}</div></div>
-                      <div class="field"><div class="label">Contact</div><div class="value">${selectedJob.clientPhone}</div></div>
-                  </div>
-                  <div>
-                      <div class="field"><div class="label">Device</div><div class="value">${selectedJob.deviceCategory} - ${selectedJob.deviceBrand} ${selectedJob.deviceModel}</div></div>
-                      <div class="field"><div class="label">Serial / IMEI</div><div class="value">${selectedJob.serialNumber}</div></div>
-                  </div>
-              </div>
-          </div>
-
-          <div class="section">
-              <div class="section-title">Diagnostic Findings</div>
-              <div class="box">
-                  <div class="field"><div class="label">Reported Fault</div><div class="value">${selectedJob.faultDescription}</div></div>
-                  <div class="field"><div class="label">Initial Condition</div><div class="value">${selectedJob.initialCondition}</div></div>
-                  <div class="field"><div class="label">Technician Outcome</div><div class="value">${selectedJob.status} - ${selectedJob.technicianNotes || 'No notes logged.'}</div></div>
-              </div>
-          </div>
-
-          <div class="section">
-              <div class="section-title">Visual Evidence</div>
-              <div class="photo-grid">
-                  <div class="photo-item">
-                      ${selectedJob.devicePhotoFront ? `<img src="${selectedJob.devicePhotoFront}" class="photo-img" />` : '<div style="padding: 20px; border: 1px dashed #ccc;">No Front Photo</div>'}
-                      <div class="label">Front View</div>
-                  </div>
-                  <div class="photo-item">
-                      ${selectedJob.devicePhotoBack ? `<img src="${selectedJob.devicePhotoBack}" class="photo-img" />` : '<div style="padding: 20px; border: 1px dashed #ccc;">No Back Photo</div>'}
-                      <div class="label">Back View</div>
-                  </div>
-              </div>
-          </div>
-
-          <div class="section">
-              <div class="section-title">Financial Summary</div>
-              <div class="grid">
-                  <div class="field"><div class="label">Agreed Service Fee</div><div class="value">₦${selectedJob.agreedAmount.toLocaleString()}</div></div>
-                  <div class="field"><div class="label">Initial Deposit</div><div class="value">₦${selectedJob.initialDeposit.toLocaleString()}</div></div>
-              </div>
-          </div>
-
-          <div class="section">
-              <div class="section-title">Integrity Verification</div>
-              <div class="box">
-                  <div class="field">
-                      <div class="label">Cryptographic Hash (SHA-256)</div>
-                      <div class="hash">${selectedJob.recordHash}</div>
-                  </div>
-                  <div class="field">
-                      <div class="label">Chain Link (Previous Hash)</div>
-                      <div class="hash">${selectedJob.prevRecordHash}</div>
-                  </div>
-              </div>
-          </div>
-
-          <div class="signatures">
-              <div class="sig-box">
-                  <img src="${selectedJob.clientSignature}" class="sig-img" />
-                  <div class="label">Client Signature</div>
-              </div>
-              <div class="sig-box">
-                  <img src="${selectedJob.technicianSignature}" class="sig-img" />
-                  <div class="label">Officer Signature</div>
-              </div>
-          </div>
-
-          <div class="footer">
-              Generated by RepairGuard AI • NDPR Compliant Forensic Record • Not valid without digital seal verification.
-          </div>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-    printWindow.focus();
-    // Allow images to load before printing
-    setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-    }, 500);
-  };
-
   const filtered = repairs.filter(r => 
     r.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     r.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -258,6 +155,29 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 relative h-full">
+      
+      {/* Receipt Modal */}
+      {showReceipt && selectedJob && (
+        <TrustReceipt 
+          job={selectedJob}
+          onClose={() => setShowReceipt(false)}
+          onWhatsApp={() => {
+             // Generate intake receipt message for existing job
+             const message = `🔐 *Repair Trust Receipt (Copy)*\n` +
+              `📍 ${selectedJob.company}\n` +
+              `📱 ${selectedJob.deviceBrand} ${selectedJob.deviceModel}\n` +
+              `📅 ${new Date(selectedJob.createdAt).toLocaleDateString()}\n` +
+              `🆔 Ref: ${selectedJob.id}\n\n` +
+              `Track status: https://receipt.repairguard.ai/verify/${selectedJob.id}`;
+             const encoded = encodeURIComponent(message);
+             let phone = selectedJob.clientPhone.replace(/\s+/g, '');
+             if (phone.startsWith('0')) phone = '234' + phone.substring(1);
+             window.open(`https://wa.me/${phone}?text=${encoded}`, '_blank');
+          }}
+          onPrint={() => window.print()}
+        />
+      )}
+
       {/* Seal Confirmation Modal */}
       {showSealModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
@@ -345,7 +265,8 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 h-[calc(100vh-240px)]">
-        <div className="lg:col-span-4 space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+        {/* List Section - Hidden if maximized */}
+        <div className={`lg:col-span-4 space-y-4 overflow-y-auto pr-2 custom-scrollbar transition-all ${isMaximized ? 'hidden' : ''}`}>
           {filtered.map(job => (
             <div key={job.id} onClick={() => setSelectedJob(job)} className={`p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer relative overflow-hidden ${selectedJob?.id === job.id ? 'bg-slate-900 border-slate-900 text-white shadow-2xl scale-[1.02]' : 'bg-white border-slate-100 hover:border-blue-200 shadow-sm'}`}>
               <div className="flex justify-between items-start mb-4">
@@ -358,7 +279,8 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
           ))}
         </div>
 
-        <div className="lg:col-span-8 bg-white rounded-[3rem] border border-slate-200 shadow-2xl overflow-hidden">
+        {/* Details Section - Adapts based on isMaximized */}
+        <div className={`${isMaximized ? 'fixed inset-0 z-50 m-4' : 'lg:col-span-8'} bg-white rounded-[3rem] border border-slate-200 shadow-2xl overflow-hidden transition-all duration-300`}>
           {selectedJob ? (
             <div className="flex flex-col h-full animate-in zoom-in-95 relative">
               {isLocked && (
@@ -377,18 +299,25 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
                 </div>
                 <div className="flex items-center space-x-3">
                   <button 
-                    onClick={handleExportPDF}
+                    onClick={() => setShowReceipt(true)}
                     className="bg-white border border-slate-200 text-slate-600 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] flex items-center space-x-2 hover:bg-slate-50 transition-all shadow-sm"
                   >
                     <FileText className="w-4 h-4" />
-                    <span className="hidden xl:inline">Export Report (PDF)</span>
+                    <span className="hidden xl:inline">Trust Receipt</span>
+                  </button>
+                  <button 
+                    onClick={handleSendWhatsAppUpdate}
+                    className="bg-[#25D366] text-white px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] flex items-center space-x-2 hover:brightness-110 transition-all shadow-sm"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    <span className="hidden xl:inline">WhatsApp Update</span>
                   </button>
                   <button 
                     onClick={() => setShowSMSModal(true)}
                     className="bg-white border border-slate-200 text-slate-600 px-4 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] flex items-center space-x-2 hover:bg-slate-50 transition-all shadow-sm"
                   >
                     <MessageSquare className="w-4 h-4" />
-                    <span className="hidden xl:inline">SMS Update</span>
+                    <span className="hidden xl:inline">SMS</span>
                   </button>
                   <button 
                     onClick={handleJusticeExport}
@@ -396,7 +325,16 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate }) => {
                     className="bg-slate-900 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] flex items-center space-x-3 hover:bg-black transition-all shadow-xl"
                   >
                     {isVerifying ? <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" /> : <Scale className="w-4 h-4" />}
-                    <span>Justice Mode</span>
+                    <span className="hidden xl:inline">Justice Mode</span>
+                  </button>
+                  
+                  {/* Maximize Toggle Button */}
+                  <button 
+                    onClick={() => setIsMaximized(!isMaximized)}
+                    className="p-3 bg-slate-100 hover:bg-slate-200 rounded-2xl text-slate-600 transition-all"
+                    title={isMaximized ? "Minimize View" : "Full Screen Stretch"}
+                  >
+                    {isMaximized ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
                   </button>
                 </div>
               </div>

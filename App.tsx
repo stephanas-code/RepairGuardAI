@@ -11,6 +11,7 @@ import RegistrationGate from './components/RegistrationGate';
 import DraftList from './components/DraftList';
 import BroadcastPage from './components/BroadcastPage';
 import MyPlan from './components/MyPlan';
+import TeamManagement from './components/TeamManagement';
 import { 
   Wrench, 
   LayoutDashboard, 
@@ -32,12 +33,13 @@ import {
   FileText,
   MessageSquare,
   Bell,
-  Sparkles
+  Sparkles,
+  Users
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'new' | 'history' | 'drafts' | 'broadcasts' | 'admin' | 'my_plan'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'new' | 'history' | 'drafts' | 'broadcasts' | 'admin' | 'my_plan' | 'team'>('dashboard');
   const [repairs, setRepairs] = useState<RepairJob[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
@@ -94,15 +96,19 @@ const App: React.FC = () => {
   const loadData = useCallback(async () => {
     if (!user || user.registrationStatus !== 'verified') return;
     
-    // Load Repairs
-    const repairData = await getRepairsForUser(user.id, user.role);
+    // Load Repairs - Now passes the full user object to handle manager role logic
+    const repairData = await getRepairsForUser(user);
     setRepairs(repairData.sort((a, b) => b.createdAt - a.createdAt));
     const unsyncedCount = repairData.filter(r => !r.isSynced).length;
     setSyncStatus(prev => ({ ...prev, pending: unsyncedCount }));
 
     // Load Message Count for Badge
+    // Only count messages newer than the last read timestamp
     const msgs = await getMessagesForCompany(user.company);
-    setMessageCount(msgs.length);
+    const lastRead = user.lastReadBroadcastTime || 0;
+    // We filter for 'directive' types or general messages sent to the company/ALL, excluding their own replies to HQ
+    const newMessages = msgs.filter(m => m.timestamp > lastRead && m.toCompany !== 'HQ');
+    setMessageCount(newMessages.length);
 
   }, [user]);
 
@@ -174,6 +180,7 @@ const App: React.FC = () => {
   }
 
   const isAdminOrSuper = user.role === 'admin' || user.role === 'super_admin';
+  const isManager = user.role === 'manager';
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 overflow-hidden h-screen font-inter">
@@ -196,6 +203,9 @@ const App: React.FC = () => {
             {!isExpired && (
               <>
                 <NavButton mobile active={activeTab === 'dashboard'} onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }} icon={<LayoutDashboard />} label="Command Center" />
+                {isManager && (
+                   <NavButton mobile active={activeTab === 'team'} onClick={() => { setActiveTab('team'); setIsMobileMenuOpen(false); }} icon={<Users />} label="Team" />
+                )}
                 <NavButton mobile active={activeTab === 'new'} onClick={() => { setActiveTab('new'); setSelectedDraft(null); setIsMobileMenuOpen(false); }} icon={<PlusCircle />} label="Intake Asset" />
                 <NavButton mobile active={activeTab === 'history'} onClick={() => { setActiveTab('history'); setIsMobileMenuOpen(false); }} icon={<History />} label="Forensic Logs" />
                 <NavButton mobile active={activeTab === 'drafts'} onClick={() => { setActiveTab('drafts'); setIsMobileMenuOpen(false); }} icon={<FileText />} label="Drafts" />
@@ -240,6 +250,9 @@ const App: React.FC = () => {
           {!isExpired && (
             <>
               <NavButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={<LayoutDashboard />} label="Command Center" />
+              {isManager && (
+                 <NavButton active={activeTab === 'team'} onClick={() => setActiveTab('team')} icon={<Users />} label="Team" />
+              )}
               <NavButton active={activeTab === 'new'} onClick={() => { setActiveTab('new'); setSelectedDraft(null); }} icon={<PlusCircle />} label="Intake Asset" />
               <NavButton active={activeTab === 'history'} onClick={() => setActiveTab('history')} icon={<History />} label="Forensic Logs" />
               <NavButton active={activeTab === 'drafts'} onClick={() => setActiveTab('drafts')} icon={<FileText />} label="Drafts" />
@@ -317,8 +330,9 @@ const App: React.FC = () => {
               await loadData();
             }} />}
             {activeTab === 'drafts' && !isExpired && <DraftList user={user} onSelect={handleDraftSelect} />}
-            {activeTab === 'broadcasts' && !isExpired && <BroadcastPage user={user} />}
+            {activeTab === 'broadcasts' && !isExpired && <BroadcastPage user={user} onUserUpdate={setUser} />}
             {activeTab === 'my_plan' && <MyPlan user={user} />}
+            {activeTab === 'team' && isManager && !isExpired && <TeamManagement user={user} />}
             {activeTab === 'admin' && isAdminOrSuper && !isExpired && <AdminPortal user={user} onUserUpdate={setUser} />}
           </div>
         </div>

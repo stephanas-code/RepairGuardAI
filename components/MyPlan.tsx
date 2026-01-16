@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { User, SubscriptionPlan } from '../types';
 import { getAllPlans, savePayment, getSetting } from '../db';
@@ -46,6 +45,7 @@ const MyPlan: React.FC<MyPlanProps> = ({ user }) => {
         amount: selectedPlan.price,
         confirmedAmount: selectedPlan.price,
         plan: selectedPlan.name,
+        planId: selectedPlan.id,
         durationDays: selectedPlan.durationDays,
         status: 'pending',
         timestamp: Date.now()

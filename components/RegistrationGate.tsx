@@ -17,16 +17,13 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
     businessType: '',
     ndpcStatus: user.ndpcStatus || 'Not Registered' as any,
     ndpcRef: user.ndpcReference || '',
-    dpoName: user.dpoName || '',
-    dpoEmail: user.dpoEmail || '',
     idType: 'NIN',
     idNumber: '',
     legalAccepted: false
   });
 
-  const [documents, setDocuments] = useState<{cac?: string, ndpc?: string, id?: string, selfie?: string}>({
+  const [documents, setDocuments] = useState<{cac?: string, id?: string, selfie?: string}>({
      cac: user.cacDocument,
-     ndpc: user.ndpcDocument,
      id: user.governmentId,
      selfie: user.biometricSelfie
   });
@@ -80,7 +77,7 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
     }
   };
 
-  const handleFileChange = (field: 'cac' | 'ndpc' | 'id', e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (field: 'cac' | 'id', e: React.ChangeEvent<HTMLInputElement>) => {
      const file = e.target.files?.[0];
      if (file) {
         const reader = new FileReader();
@@ -115,11 +112,8 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
         businessAddress: formData.address,
         ndpcStatus: formData.ndpcStatus,
         ndpcReference: formData.ndpcRef,
-        dpoName: formData.dpoName,
-        dpoEmail: formData.dpoEmail,
         legalAcceptedTimestamp: Date.now(),
         cacDocument: documents.cac,
-        ndpcDocument: documents.ndpc,
         governmentId: documents.id,
         biometricSelfie: documents.selfie
       });
@@ -144,7 +138,8 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
   };
 
   const isStep1Valid = formData.cacNumber.length > 4 && formData.address.length > 5 && !!documents.cac;
-  const isStep2Valid = formData.ndpcStatus !== 'Not Registered' ? (formData.ndpcRef.length > 3 && !!documents.ndpc) : true;
+  // Step 2 valid if registered + ref, OR if not registered (no proof needed now)
+  const isStep2Valid = formData.ndpcStatus !== 'Not Registered' ? (formData.ndpcRef.length > 3) : true;
   const isStep3Valid = formData.idNumber.length > 5 && formData.legalAccepted && !!documents.id && !!documents.selfie;
 
   if (isPendingApproval) {
@@ -306,33 +301,19 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
                 </div>
 
                 {formData.ndpcStatus !== 'Not Registered' && (
-                  <>
+                  <div className="animate-in fade-in slide-in-from-top-2">
                      <Input label="NDPC Reference (Forensic Audit ID)" placeholder="NDPC/2024/APP/..." value={formData.ndpcRef} onChange={v => setFormData({...formData, ndpcRef: v})} />
-                     
-                     {/* File Upload for NDPC */}
-                     <div className="space-y-1">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Compliance Audit Report / Certificate</label>
-                        <label className={`block w-full border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors ${documents.ndpc ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                           <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => handleFileChange('ndpc', e)} />
-                           {documents.ndpc ? (
-                              <div className="flex flex-col items-center text-emerald-600">
-                                 <FileCheck className="w-8 h-8 mb-2" />
-                                 <span className="text-xs font-black uppercase">Audit Report Uploaded</span>
-                              </div>
-                           ) : (
-                              <div className="flex flex-col items-center text-slate-400">
-                                 <FileText className="w-8 h-8 mb-2" />
-                                 <span className="text-xs font-black uppercase">Upload NDPC Proof</span>
-                              </div>
-                           )}
-                        </label>
-                     </div>
-                  </>
+                  </div>
                 )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <Input label="Data Protection Officer" placeholder="Name" value={formData.dpoName} onChange={v => setFormData({...formData, dpoName: v})} />
-                   <Input label="DPO Email" placeholder="dpo@company.io" value={formData.dpoEmail} onChange={v => setFormData({...formData, dpoEmail: v})} />
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-start space-x-3">
+                   <ShieldCheck className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
+                   <div>
+                      <p className="text-xs font-black text-slate-800 uppercase tracking-wide">DPO Assignment</p>
+                      <p className="text-[10px] text-slate-500 font-bold leading-relaxed mt-1">
+                         A Data Protection Officer (DPO) will be assigned to your organization by HQ Administration upon successful verification. You do not need to nominate one at this stage.
+                      </p>
+                   </div>
                 </div>
               </div>
 
