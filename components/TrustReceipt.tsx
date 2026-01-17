@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { RepairJob, User, TIER_FEATURES } from '../types';
-import { ShieldCheck, Smartphone, Laptop, Printer, Package, Calendar, Clock, Hash, MapPin, ExternalLink, AlertTriangle } from 'lucide-react';
+import { ShieldCheck, Smartphone, Laptop, Printer, Package, Calendar, Clock, Hash, MapPin, ExternalLink, AlertTriangle, Gavel, Scale } from 'lucide-react';
 
 interface TrustReceiptProps {
   job: RepairJob;
@@ -14,8 +14,6 @@ interface TrustReceiptProps {
 const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhatsApp, onPrint }) => {
   
   // Determine if this receipt is from a Free/Trial tier
-  // If user is not passed (viewing historical), we assume based on context or store tier in job (not implemented yet, so we assume valid if user is missing for now, or use props)
-  // For immediate generation, user is present.
   const currentTierId = user?.currentPlanId ? user.currentPlanId.toUpperCase() : 'FREE';
   const isFreeTier = currentTierId === 'FREE';
 
@@ -33,7 +31,6 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-sm animate-in fade-in">
-      {/* Added 'printable-area' class for print media query targeting */}
       <div className="printable-area bg-white w-full max-w-lg rounded-[2rem] overflow-hidden shadow-2xl relative flex flex-col max-h-[90vh]">
         
         {/* Receipt Header */}
@@ -78,7 +75,7 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
                   </div>
                </div>
 
-               <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 mb-8">
+               <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 mb-6">
                   <div className="flex items-center space-x-4 mb-4">
                      <div className="p-3 bg-white rounded-xl shadow-sm text-slate-700 border border-slate-100">
                         {getIcon()}
@@ -98,11 +95,24 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
                         <span className="font-bold text-slate-500">Initial Deposit</span>
                         <span className="font-black text-slate-900">₦{job.initialDeposit.toLocaleString()}</span>
                      </div>
-                     <div className="flex justify-between">
-                        <span className="font-bold text-slate-500">Est. Total</span>
-                        <span className="font-black text-slate-900">₦{job.agreedAmount.toLocaleString()}</span>
+                     <div className="flex justify-between border-t border-slate-200 pt-2 mt-2">
+                        <span className="font-bold text-slate-500">Agreed Balance</span>
+                        <span className="font-black text-slate-900">₦{(job.agreedAmount - job.initialDeposit).toLocaleString()}</span>
                      </div>
                   </div>
+               </div>
+
+               {/* Legal Protection Declaration on Receipt */}
+               <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 mb-8">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Scale className="w-3 h-3 text-blue-600" />
+                    <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Client Legal Acknowledgment</span>
+                  </div>
+                  <p className="text-[9.5px] font-medium text-slate-600 leading-relaxed italic">
+                    "I declare that I am the sole owner/authorized possessor of this asset. I am not a co-author of theft. 
+                    The technician's only involvement is limited to fixing the fault described herein. 
+                    All information provided by me is NDPR-protected and hashed for forensic truth."
+                  </p>
                </div>
 
                <div className="flex items-center justify-between">
@@ -118,7 +128,6 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
                         <span className="text-[8px] font-mono text-slate-400">OFFICER SEAL</span>
                      </div>
                   </div>
-                  {/* Free Tier gets no QR or a dummy/blurred one */}
                   <div className="w-24 h-24 bg-white p-2 rounded-xl border-2 border-slate-900 shadow-lg shrink-0 overflow-hidden relative">
                      {isFreeTier ? (
                         <div className="w-full h-full bg-slate-100 flex items-center justify-center text-center">

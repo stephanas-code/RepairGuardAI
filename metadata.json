@@ -3,6 +3,7 @@
   "description": "A high-security, AI-powered workshop management tool for digital repairs featuring offline-first storage, non-repudiation signatures, and intelligent fault diagnostics.",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "usb"
   ]
 }

@@ -1,8 +1,8 @@
 
-import { RepairJob, User, PaymentRequest, AdminMessage, SMSLog, DraftRepair, SubscriptionPlan, TIER_FEATURES } from './types';
+import { RepairJob, User, PaymentRequest, AdminMessage, SMSLog, DraftRepair, SubscriptionPlan, TIER_FEATURES, AuditLog } from './types';
 
-const DB_NAME = 'RepairGuardDB_v5'; // Incremented for new schema
-const DB_VERSION = 8;
+const DB_NAME = 'RepairGuardDB_v5'; 
+const DB_VERSION = 9; // Incremented for Audit Logs
 const STORES = {
   REPAIRS: 'repairs',
   USERS: 'users',
@@ -12,7 +12,8 @@ const STORES = {
   COMPLIANCE: 'compliance_logs',
   SMS: 'sms_logs',
   DRAFTS: 'drafts',
-  PLANS: 'plans'
+  PLANS: 'plans',
+  AUDIT: 'audit_logs'
 };
 
 export const initDB = (): Promise<IDBDatabase> => {
@@ -44,6 +45,9 @@ export const initDB = (): Promise<IDBDatabase> => {
       }
       if (!db.objectStoreNames.contains(STORES.DRAFTS)) {
         db.createObjectStore(STORES.DRAFTS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORES.AUDIT)) {
+        db.createObjectStore(STORES.AUDIT, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains(STORES.PLANS)) {
         const planStore = db.createObjectStore(STORES.PLANS, { keyPath: 'id' });
@@ -91,8 +95,6 @@ export const initDB = (): Promise<IDBDatabase> => {
           }
         ];
         
-        // Cannot use await inside upgradeneeded for put operations in the same transaction easily
-        // But for object store creation, we populate initial data
         defaultPlans.forEach(plan => planStore.put(plan));
       }
     };
@@ -118,6 +120,21 @@ export const logComplianceEvent = async (event: { action: string, data: any }): 
     id: `log-${Date.now()}-${Math.random()}`,
     timestamp: Date.now(),
     ...event
+  });
+};
+
+export const saveAuditLog = async (log: AuditLog): Promise<void> => {
+  const db = await initDB();
+  const tx = db.transaction(STORES.AUDIT, 'readwrite');
+  tx.objectStore(STORES.AUDIT).put(log);
+};
+
+export const getAuditLogs = async (): Promise<AuditLog[]> => {
+  const db = await initDB();
+  return new Promise((resolve) => {
+    const tx = db.transaction(STORES.AUDIT, 'readonly');
+    const request = tx.objectStore(STORES.AUDIT).getAll();
+    request.onsuccess = () => resolve(request.result.sort((a: AuditLog, b: AuditLog) => b.timestamp - a.timestamp));
   });
 };
 
@@ -324,7 +341,6 @@ export const deletePlan = async (id: string): Promise<void> => {
   tx.objectStore(STORES.PLANS).delete(id);
 };
 
-// Helper to check and reset job count for monthly limits
 export const checkJobLimit = async (user: User): Promise<{ allowed: boolean, user: User }> => {
     const now = Date.now();
     const lastReset = user.lastJobReset || 0;
@@ -332,7 +348,6 @@ export const checkJobLimit = async (user: User): Promise<{ allowed: boolean, use
     
     let updatedUser = { ...user };
     
-    // Reset if month has passed
     if (now - lastReset > oneMonth) {
         updatedUser.jobsCreatedThisMonth = 0;
         updatedUser.lastJobReset = now;
@@ -340,7 +355,6 @@ export const checkJobLimit = async (user: User): Promise<{ allowed: boolean, use
     }
 
     const currentPlanId = updatedUser.currentPlanId || 'free';
-    // Free tier limit is 5
     if (currentPlanId === 'free') {
         if ((updatedUser.jobsCreatedThisMonth || 0) >= TIER_FEATURES.FREE.limitJobs) {
             return { allowed: false, user: updatedUser };

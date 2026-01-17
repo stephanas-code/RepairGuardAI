@@ -52,10 +52,13 @@ const TeamManagement: React.FC<TeamManagementProps> = ({ user }) => {
         currentPlanId: 'free',
         jobsCreatedThisMonth: 0,
         skillLevel: 'Apprentice',
-        // Inherit compliance from company owner? 
-        // Typically staff inherit the legal entity of the business.
+        // Inherit compliance from company owner
         cacNumber: user.cacNumber,
-        businessAddress: user.businessAddress
+        businessAddress: user.businessAddress,
+        cacDocument: user.cacDocument, // Inherit proof so they don't get stuck at upload gate if ever needed
+        ndpcStatus: user.ndpcStatus,
+        ndpcReference: user.ndpcReference,
+        // Removed legalAcceptedTimestamp to force Identity Verification flow in RegistrationGate
       };
 
       await saveUser(newUser);

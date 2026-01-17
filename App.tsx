@@ -12,6 +12,7 @@ import DraftList from './components/DraftList';
 import BroadcastPage from './components/BroadcastPage';
 import MyPlan from './components/MyPlan';
 import TeamManagement from './components/TeamManagement';
+import ComplianceDisclaimer from './components/ComplianceDisclaimer';
 import { 
   Wrench, 
   LayoutDashboard, 
@@ -34,12 +35,13 @@ import {
   MessageSquare,
   Bell,
   Sparkles,
-  Users
+  Users,
+  Scale
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'new' | 'history' | 'drafts' | 'broadcasts' | 'admin' | 'my_plan' | 'team'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'new' | 'history' | 'drafts' | 'broadcasts' | 'admin' | 'my_plan' | 'team' | 'compliance'>('dashboard');
   const [repairs, setRepairs] = useState<RepairJob[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [syncing, setSyncing] = useState(false);
@@ -213,6 +215,7 @@ const App: React.FC = () => {
               </>
             )}
             <NavButton mobile active={activeTab === 'my_plan'} onClick={() => { setActiveTab('my_plan'); setIsMobileMenuOpen(false); }} icon={<Sparkles />} label="My Plan" />
+            <NavButton mobile active={activeTab === 'compliance'} onClick={() => { setActiveTab('compliance'); setIsMobileMenuOpen(false); }} icon={<Scale />} label="Legal & Compliance" />
             
             <div className="pt-4 border-t border-slate-800 mt-4 flex items-center justify-between">
               <div className="flex items-center space-x-3">
@@ -263,6 +266,7 @@ const App: React.FC = () => {
           {/* Always Available */}
           <div className="pt-2 mt-2 border-t border-slate-800/50">
              <NavButton active={activeTab === 'my_plan'} onClick={() => setActiveTab('my_plan')} icon={<Sparkles />} label="My Plan" />
+             <NavButton active={activeTab === 'compliance'} onClick={() => setActiveTab('compliance')} icon={<Scale />} label="Legal & Compliance" />
           </div>
 
           {isAdminOrSuper && !isExpired && (
@@ -325,13 +329,14 @@ const App: React.FC = () => {
               await loadData();
               setActiveTab('history');
             }} isOnline={isOnline} />}
-            {activeTab === 'history' && !isExpired && <RepairList repairs={repairs} onUpdate={async (job) => {
+            {activeTab === 'history' && !isExpired && <RepairList user={user} repairs={repairs} onUpdate={async (job) => {
               await saveRepair({ ...job, isSynced: false });
               await loadData();
             }} />}
             {activeTab === 'drafts' && !isExpired && <DraftList user={user} onSelect={handleDraftSelect} />}
             {activeTab === 'broadcasts' && !isExpired && <BroadcastPage user={user} onUserUpdate={setUser} />}
             {activeTab === 'my_plan' && <MyPlan user={user} />}
+            {activeTab === 'compliance' && <ComplianceDisclaimer />}
             {activeTab === 'team' && isManager && !isExpired && <TeamManagement user={user} />}
             {activeTab === 'admin' && isAdminOrSuper && !isExpired && <AdminPortal user={user} onUserUpdate={setUser} />}
           </div>

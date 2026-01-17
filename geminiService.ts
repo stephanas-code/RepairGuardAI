@@ -13,8 +13,6 @@ export const analyzeFault = async (
   initialCondition: string
 ): Promise<AISuggestion[]> => {
   try {
-    // Technical forensic repair analysis involves complex reasoning.
-    // Use 'gemini-3-pro-preview' as specified in guidelines for complex reasoning.
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: `Perform a forensic repair analysis for a ${category} (${brand} ${model}).
@@ -29,42 +27,7 @@ export const analyzeFault = async (
       - 'precision': Effectiveness of the proposed fix (0-100)
       - 'riskLevel': Risk of further damage (Low, Medium, High)`,
       config: {
-        systemInstruction: `You are RepairGuardAI, a regulated, compliance-focused digital repair, forensic logging, and cybersecurity assistance system.
-
-CORE IDENTITY
-You are NOT a general-purpose AI assistant. You exist only to support the RepairGuardAI platform.
-Your role is to:
-- Assist with digital repair diagnostics
-- Support forensic-grade logging
-- Enforce non-repudiation principles
-- Support NDPR-aligned workflows
-- Generate tamper-evident, structured outputs
-
-STRICT SCOPE LIMITATION
-You must NOT:
-- Check the internet
-- Assume laws, tools, devices, APIs, or infrastructure
-- Reference external platforms (ChatGPT, Google, OpenAI, etc.)
-- Add features not explicitly stated
-- Suggest alternatives outside RepairGuardAI
-
-If something is not explicitly mentioned or data is missing, state: "Insufficient data provided to generate a forensic-grade response."
-
-FORENSIC & COMPLIANCE BEHAVIOR
-All outputs must be:
-- Structured
-- Neutral
-- Factual
-- Timestamp-aware
-- Non-emotional
-
-Do NOT guess missing data. If data is missing, clearly state it.
-
-NON-REPUDIATION RULE
-Be precise, minimal, deterministic, and repeatable.
-
-OUTPUT FORMAT CONTROL
-Respond strictly using the defined JSON schema. Never output marketing language, emojis, or casual tone.`,
+        systemInstruction: `You are RepairGuardAI, a regulated, compliance-focused digital repair, forensic logging, and cybersecurity assistance system. All outputs must be structured, neutral, factual, and timestamp-aware.`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -83,11 +46,52 @@ Respond strictly using the defined JSON schema. Never output marketing language,
       }
     });
 
-    // Access .text property directly as per latest guidelines.
     const text = response.text;
     return JSON.parse(text || "[]");
   } catch (error) {
     console.error("AI Analysis failed:", error);
     return [];
+  }
+};
+
+/**
+ * Uses Gemini 2.5 Flash to extract IMEI, Serial Numbers, or Model identifiers from device photos.
+ */
+export const extractDeviceMetadata = async (base64Image: string): Promise<{ imei?: string; serial?: string; modelInfo?: string }> => {
+  try {
+    // Standardize data: URL if present
+    const data = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image",
+      contents: [
+        {
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: data
+          }
+        },
+        {
+          text: "Extract any hardware identifiers from this device photo. Look for IMEI numbers (15 digits), Serial Numbers (S/N), or Model Numbers. Focus on stickers, etched text, or screen info if visible. Return only valid JSON."
+        }
+      ],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            imei: { type: Type.STRING, description: "15-digit International Mobile Equipment Identity" },
+            serial: { type: Type.STRING, description: "Manufacturer serial number" },
+            modelInfo: { type: Type.STRING, description: "Specific model variant or name detected" }
+          }
+        }
+      }
+    });
+
+    const text = response.text;
+    return JSON.parse(text || "{}");
+  } catch (error) {
+    console.error("Metadata extraction failed:", error);
+    return {};
   }
 };

@@ -10,7 +10,8 @@ interface RegistrationGateProps {
 }
 
 const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete }) => {
-  const [step, setStep] = useState(1);
+  // Staff skip directly to Identity Verification (Step 3) if they already have inherited company data
+  const [step, setStep] = useState(user.role === 'staff' ? 3 : 1);
   const [formData, setFormData] = useState({
     cacNumber: user.cacNumber || '',
     address: user.businessAddress || '',
@@ -115,7 +116,8 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
         legalAcceptedTimestamp: Date.now(),
         cacDocument: documents.cac,
         governmentId: documents.id,
-        biometricSelfie: documents.selfie
+        biometricSelfie: documents.selfie,
+        personalIdNumber: formData.idNumber // Capture NIN for staff
       });
       setIsVerifying(false);
     }, 2000);
@@ -140,7 +142,8 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
   const isStep1Valid = formData.cacNumber.length > 4 && formData.address.length > 5 && !!documents.cac;
   // Step 2 valid if registered + ref, OR if not registered (no proof needed now)
   const isStep2Valid = formData.ndpcStatus !== 'Not Registered' ? (formData.ndpcRef.length > 3) : true;
-  const isStep3Valid = formData.idNumber.length > 5 && formData.legalAccepted && !!documents.id && !!documents.selfie;
+  // Step 3 valid: Staff doesn't need ID document upload, just number and selfie.
+  const isStep3Valid = formData.idNumber.length > 5 && formData.legalAccepted && (user.role === 'staff' || !!documents.id) && !!documents.selfie;
 
   if (isPendingApproval) {
     return (
@@ -375,31 +378,34 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
                     </div>
                  </div>
 
-                 {/* ID Upload Section */}
+                 {/* ID Section */}
                  <div className="space-y-4">
-                    <div className="space-y-1">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Government ID</label>
-                       <label className={`block w-full border-2 border-dashed rounded-[2rem] p-6 text-center cursor-pointer transition-colors aspect-square flex flex-col items-center justify-center ${documents.id ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
-                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange('id', e)} />
-                          {documents.id ? (
-                             <div className="flex flex-col items-center text-emerald-600">
-                                <img src={documents.id} alt="ID" className="w-32 h-20 object-cover rounded-lg shadow-sm mb-4" />
-                                <span className="text-xs font-black uppercase">ID Uploaded</span>
-                                <span className="text-[9px]">Tap to change</span>
-                             </div>
-                          ) : (
-                             <div className="flex flex-col items-center text-slate-400">
-                                <CreditCard className="w-10 h-10 mb-3" />
-                                <span className="text-xs font-black uppercase">Upload ID Card</span>
-                                <span className="text-[9px]">NIN / Driver's License</span>
-                             </div>
-                          )}
-                       </label>
-                    </div>
+                    {/* ID Upload - Hidden for Staff */}
+                    {user.role !== 'staff' && (
+                        <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Government ID</label>
+                        <label className={`block w-full border-2 border-dashed rounded-[2rem] p-6 text-center cursor-pointer transition-colors aspect-square flex flex-col items-center justify-center ${documents.id ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 hover:bg-slate-50'}`}>
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileChange('id', e)} />
+                            {documents.id ? (
+                                <div className="flex flex-col items-center text-emerald-600">
+                                    <img src={documents.id} alt="ID" className="w-32 h-20 object-cover rounded-lg shadow-sm mb-4" />
+                                    <span className="text-xs font-black uppercase">ID Uploaded</span>
+                                    <span className="text-[9px]">Tap to change</span>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center text-slate-400">
+                                    <CreditCard className="w-10 h-10 mb-3" />
+                                    <span className="text-xs font-black uppercase">Upload ID Card</span>
+                                    <span className="text-[9px]">NIN / Driver's License</span>
+                                </div>
+                            )}
+                        </label>
+                        </div>
+                    )}
 
                     <div className="space-y-1">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Document Reference No.</label>
-                       <Input label="" placeholder="Enter ID Number" value={formData.idNumber} onChange={v => setFormData({...formData, idNumber: v})} />
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Document Reference No. (NIN)</label>
+                       <Input label="" placeholder="Enter ID/NIN Number" value={formData.idNumber} onChange={v => setFormData({...formData, idNumber: v})} />
                     </div>
                  </div>
               </div>
@@ -408,7 +414,7 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
                 <label className="flex items-start space-x-4 cursor-pointer">
                   <input type="checkbox" className="mt-1 w-6 h-6 rounded-lg bg-slate-800 border-slate-700 text-blue-500" checked={formData.legalAccepted} onChange={e => setFormData({...formData, legalAccepted: e.target.checked})} />
                   <span className="text-[11px] font-bold text-slate-400 leading-relaxed">
-                    I, the undersigned, confirm I am the authorized Data Controller for <span className="text-white font-black">{user.company}</span>. 
+                    I, the undersigned, confirm I am authorized to access <span className="text-white font-black">{user.company}</span> data. 
                     I accept legal responsibility for the forensic truth of all records hashed on this platform. 
                     I understand that data is stored locally first and synced under NDPA encryption.
                   </span>
@@ -416,11 +422,13 @@ const RegistrationGate: React.FC<RegistrationGateProps> = ({ user, onComplete })
               </div>
 
               <div className="flex space-x-4">
-                <button onClick={() => setStep(2)} className="flex-1 bg-slate-100 text-slate-500 py-5 rounded-2xl font-black uppercase tracking-widest text-xs">Back</button>
+                {user.role !== 'staff' && (
+                    <button onClick={() => setStep(2)} className="flex-1 bg-slate-100 text-slate-500 py-5 rounded-2xl font-black uppercase tracking-widest text-xs">Back</button>
+                )}
                 <button 
                   onClick={handleFinish} 
                   disabled={!isStep3Valid || isVerifying} 
-                  className="flex-[2] bg-emerald-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs shadow-2xl shadow-emerald-500/20 flex items-center justify-center space-x-3 transition-all hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`flex-[2] bg-emerald-600 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-xs shadow-2xl shadow-emerald-500/20 flex items-center justify-center space-x-3 transition-all hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed ${user.role === 'staff' ? 'w-full' : ''}`}
                 >
                   {isVerifying ? (
                     <Loader2 className="w-5 h-5 animate-spin" />

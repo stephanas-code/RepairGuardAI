@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { getUserByUsername, saveUser } from '../db';
 import { User } from '../types';
-import { Wrench, ShieldCheck, Lock, User as UserIcon, AlertCircle, Download, X, Building2, ChevronRight, ArrowRight, Phone } from 'lucide-react';
+import { Wrench, ShieldCheck, Lock, User as UserIcon, AlertCircle, Download, X, Building2, ChevronRight, ArrowRight, Phone, Mail } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -14,7 +14,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     username: '',
     password: '',
     name: '',
-    company: ''
+    company: '',
+    email: ''
   });
   
   const [error, setError] = useState('');
@@ -94,6 +95,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
         password: formData.password,
         name: formData.name,
         company: formData.company,
+        email: formData.email,
         role: 'manager',
         createdAt: Date.now(),
         aiUsageCount: 0,
@@ -200,6 +202,20 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                       placeholder="John Doe"
                       value={formData.name}
                       onChange={e => setFormData({...formData, name: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1 animate-in slide-in-from-left-4 fade-in delay-100">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Recovery Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                    <input 
+                      required
+                      type="email"
+                      className="w-full pl-11 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold"
+                      placeholder="admin@company.com"
+                      value={formData.email}
+                      onChange={e => setFormData({...formData, email: e.target.value})}
                     />
                   </div>
                 </div>

@@ -62,6 +62,7 @@ export interface User {
   id: string;
   username: string;
   password: string;
+  email?: string; // Added for password recovery/audit
   name: string;
   company: string;
   role: UserRole;
@@ -91,6 +92,7 @@ export interface User {
   cacDocument?: string;
   ndpcDocument?: string;
   governmentId?: string;
+  personalIdNumber?: string; // Added for staff ID reference
   biometricSelfie?: string;
 }
 
@@ -212,4 +214,15 @@ export interface SMSLog {
   status: 'Sent' | 'Failed' | 'Delivered';
   timestamp: number;
   deliveryProof?: string;
+}
+
+export interface AuditLog {
+  id: string;
+  adminId: string;
+  adminName: string;
+  company?: string; // Organization Context
+  action: string; // e.g., "VERIFY_USER", "CHANGE_SETTING", "ADD_STAFF", "INTAKE_ASSET"
+  targetId?: string; // ID of the user/entity being affected
+  details: string;
+  timestamp: number;
 }
