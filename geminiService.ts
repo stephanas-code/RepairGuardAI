@@ -92,24 +92,16 @@ export const extractDeviceMetadata = async (base64Image: string): Promise<{ imei
           }
         },
         {
-          text: "Extract any hardware identifiers from this device photo. Look for IMEI numbers (15 digits), Serial Numbers (S/N), or Model Numbers. Focus on stickers, etched text, or screen info if visible. Return only valid JSON."
+          text: "Extract any hardware identifiers from this device photo. Look for IMEI numbers (15 digits), Serial Numbers (S/N), or Model Numbers. Focus on stickers, etched text, or screen info if visible. Return the result as a valid JSON object with keys 'imei', 'serial', and 'modelInfo'. Do not use markdown formatting."
         }
-      ],
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            imei: { type: Type.STRING, description: "15-digit International Mobile Equipment Identity" },
-            serial: { type: Type.STRING, description: "Manufacturer serial number" },
-            modelInfo: { type: Type.STRING, description: "Specific model variant or name detected" }
-          }
-        }
-      }
+      ]
     });
 
-    const text = response.text;
-    return JSON.parse(text || "{}");
+    let text = response.text || "{}";
+    // Strip markdown if present
+    text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+
+    return JSON.parse(text);
   } catch (error) {
     console.error("Metadata extraction failed:", error);
     return {};
