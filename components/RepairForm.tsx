@@ -11,7 +11,7 @@ import {
   PenTool, AlertTriangle, Hash, Activity, Mail, Landmark, Shield, 
   Keyboard, MousePointer2, CreditCard, Banknote, X, MessageSquare,
   WifiOff, Lock, Save, Camera, RefreshCw, Image, Eye, Loader2,
-  Usb, Download, Check, Scale, Gavel, BrainCircuit, ExternalLink, PlayCircle, FileText
+  Usb, Download, Check, Scale, Gavel, BrainCircuit, ExternalLink, PlayCircle, FileText, Eraser, Type
 } from 'lucide-react';
 
 declare global {
@@ -45,6 +45,17 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   const [isRegeneratingAI, setIsRegeneratingAI] = useState(false);
   const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Signature Refs & State
+  const clientSigCanvas = useRef<HTMLCanvasElement>(null);
+  const techSigCanvas = useRef<HTMLCanvasElement>(null);
+  const isDrawingClient = useRef(false);
+  const isDrawingTech = useRef(false);
+  
+  const [clientSigMode, setClientSigMode] = useState<'draw' | 'type'>('draw');
+  const [techSigMode, setTechSigMode] = useState<'draw' | 'type'>('draw');
+  const [clientTypedName, setClientTypedName] = useState('');
+  const [techTypedName, setTechTypedName] = useState('');
 
   const [bridgeAvailable, setBridgeAvailable] = useState<boolean>(false);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
@@ -127,6 +138,95 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
       setDraftId(initialData.id);
     }
   }, [initialData]);
+
+  // Signature Logic
+  const startSig = (e: React.MouseEvent | React.TouchEvent, ref: React.RefObject<HTMLCanvasElement>, isDrawing: React.MutableRefObject<boolean>) => {
+     const canvas = ref.current;
+     if(!canvas) return;
+     const ctx = canvas.getContext('2d');
+     if(!ctx) return;
+     
+     const rect = canvas.getBoundingClientRect();
+     let x, y;
+     
+     if ('touches' in e) {
+        x = e.touches[0].clientX - rect.left;
+        y = e.touches[0].clientY - rect.top;
+     } else {
+        x = (e as React.MouseEvent).clientX - rect.left;
+        y = (e as React.MouseEvent).clientY - rect.top;
+     }
+
+     isDrawing.current = true;
+     ctx.beginPath();
+     ctx.lineWidth = 2;
+     ctx.lineCap = 'round';
+     ctx.strokeStyle = '#0f172a'; // slate-900
+     ctx.moveTo(x, y);
+  };
+
+  const moveSig = (e: React.MouseEvent | React.TouchEvent, ref: React.RefObject<HTMLCanvasElement>, isDrawing: React.MutableRefObject<boolean>) => {
+     if(!isDrawing.current || !ref.current) return;
+     if ('touches' in e) e.preventDefault(); // Stop page scroll
+     
+     const canvas = ref.current;
+     const ctx = canvas.getContext('2d');
+     if(!ctx) return;
+     
+     const rect = canvas.getBoundingClientRect();
+     let x, y;
+     
+     if ('touches' in e) {
+        x = e.touches[0].clientX - rect.left;
+        y = e.touches[0].clientY - rect.top;
+     } else {
+        x = (e as React.MouseEvent).clientX - rect.left;
+        y = (e as React.MouseEvent).clientY - rect.top;
+     }
+
+     ctx.lineTo(x, y);
+     ctx.stroke();
+  };
+
+  const endSig = (ref: React.RefObject<HTMLCanvasElement>, isDrawing: React.MutableRefObject<boolean>, setSig: (s: string | null) => void) => {
+     if (!isDrawing.current) return;
+     isDrawing.current = false;
+     if(ref.current) setSig(ref.current.toDataURL());
+  };
+
+  const clearSig = (ref: React.RefObject<HTMLCanvasElement>, setSig: (s: string | null) => void) => {
+     const canvas = ref.current;
+     if(canvas) {
+         const ctx = canvas.getContext('2d');
+         ctx?.clearRect(0,0, canvas.width, canvas.height);
+         setSig(null);
+     }
+  };
+
+  // Typed Signature Logic
+  const handleTypeSignature = (text: string, canvasRef: React.RefObject<HTMLCanvasElement>, setSig: (s: string | null) => void) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Clear the canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      if (!text.trim()) {
+          setSig(null);
+          return;
+      }
+
+      // Render Text
+      ctx.font = "italic 40px 'Great Vibes', cursive";
+      ctx.fillStyle = "#0f172a"; // slate-900
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      
+      setSig(canvas.toDataURL());
+  };
 
   const handleSaveDraft = async () => {
     if (!formData.clientName && !formData.clientPhone) {
@@ -426,6 +526,14 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
           </div>
 
           <section className="space-y-6">
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center space-x-3"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" /><span>Service Costs</span></h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <InputGroup icon={<Banknote className="w-4 h-4" />} type="number" placeholder="Agreed Amount (₦)" value={formData.agreedAmount} onChange={v => setFormData({...formData, agreedAmount: v})} />
+              <InputGroup icon={<CreditCard className="w-4 h-4" />} type="number" placeholder="Initial Deposit (₦)" value={formData.initialDeposit} onChange={v => setFormData({...formData, initialDeposit: v})} />
+            </div>
+          </section>
+
+          <section className="space-y-6">
             <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center space-x-3"><div className="w-1.5 h-1.5 bg-amber-500 rounded-full" /><span>Visual Evidence</span></h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                {[ 'front', 'back' ].map(side => (
@@ -515,6 +623,103 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
               )}
             </section>
           )}
+
+          {/* Signatures */}
+          <section className="space-y-6">
+            <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center space-x-3"><div className="w-1.5 h-1.5 bg-rose-500 rounded-full" /><span>Authorization & Signatures</span></h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Client Signature */}
+                <div className="space-y-3">
+                    <div className="flex justify-between items-center px-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client Signature</label>
+                        <div className="flex space-x-1">
+                             <button type="button" onClick={() => setClientSigMode('draw')} className={`p-1.5 rounded-lg transition-colors ${clientSigMode === 'draw' ? 'bg-blue-100 text-blue-600' : 'text-slate-400'}`}><PenTool className="w-3 h-3" /></button>
+                             <button type="button" onClick={() => setClientSigMode('type')} className={`p-1.5 rounded-lg transition-colors ${clientSigMode === 'type' ? 'bg-blue-100 text-blue-600' : 'text-slate-400'}`}><Type className="w-3 h-3" /></button>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-white border-2 border-dashed border-slate-300 rounded-2xl overflow-hidden relative touch-none group">
+                        <canvas 
+                            ref={clientSigCanvas}
+                            width={400}
+                            height={160}
+                            className="w-full h-40"
+                            onMouseDown={e => clientSigMode === 'draw' && startSig(e, clientSigCanvas, isDrawingClient)}
+                            onMouseMove={e => clientSigMode === 'draw' && moveSig(e, clientSigCanvas, isDrawingClient)}
+                            onMouseUp={() => clientSigMode === 'draw' && endSig(clientSigCanvas, isDrawingClient, setClientSignature)}
+                            onMouseLeave={() => clientSigMode === 'draw' && endSig(clientSigCanvas, isDrawingClient, setClientSignature)}
+                            onTouchStart={e => clientSigMode === 'draw' && startSig(e, clientSigCanvas, isDrawingClient)}
+                            onTouchMove={e => clientSigMode === 'draw' && moveSig(e, clientSigCanvas, isDrawingClient)}
+                            onTouchEnd={() => clientSigMode === 'draw' && endSig(clientSigCanvas, isDrawingClient, setClientSignature)}
+                        />
+                        {clientSigMode === 'type' && (
+                             <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                                  <input 
+                                    type="text" 
+                                    className="w-3/4 p-2 bg-white border border-slate-200 rounded-xl text-center font-bold outline-none focus:ring-2 focus:ring-blue-500" 
+                                    placeholder="Type Client Name"
+                                    value={clientTypedName}
+                                    onChange={(e) => {
+                                        setClientTypedName(e.target.value);
+                                        handleTypeSignature(e.target.value, clientSigCanvas, setClientSignature);
+                                    }}
+                                  />
+                             </div>
+                        )}
+                        <button type="button" onClick={() => { clearSig(clientSigCanvas, setClientSignature); setClientTypedName(''); }} className="absolute top-2 right-2 p-2 bg-slate-100 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                            <Eraser className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <p className="text-[9px] font-bold text-slate-400 text-center">Sign above to authorize repair</p>
+                </div>
+
+                {/* Technician Signature */}
+                <div className="space-y-3">
+                    <div className="flex justify-between items-center px-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Technician Signature</label>
+                        <div className="flex space-x-1">
+                             <button type="button" onClick={() => setTechSigMode('draw')} className={`p-1.5 rounded-lg transition-colors ${techSigMode === 'draw' ? 'bg-blue-100 text-blue-600' : 'text-slate-400'}`}><PenTool className="w-3 h-3" /></button>
+                             <button type="button" onClick={() => setTechSigMode('type')} className={`p-1.5 rounded-lg transition-colors ${techSigMode === 'type' ? 'bg-blue-100 text-blue-600' : 'text-slate-400'}`}><Type className="w-3 h-3" /></button>
+                        </div>
+                    </div>
+
+                    <div className="bg-white border-2 border-dashed border-slate-300 rounded-2xl overflow-hidden relative touch-none">
+                        <canvas 
+                            ref={techSigCanvas}
+                            width={400}
+                            height={160}
+                            className="w-full h-40"
+                            onMouseDown={e => techSigMode === 'draw' && startSig(e, techSigCanvas, isDrawingTech)}
+                            onMouseMove={e => techSigMode === 'draw' && moveSig(e, techSigCanvas, isDrawingTech)}
+                            onMouseUp={() => techSigMode === 'draw' && endSig(techSigCanvas, isDrawingTech, setTechSignature)}
+                            onMouseLeave={() => techSigMode === 'draw' && endSig(techSigCanvas, isDrawingTech, setTechSignature)}
+                            onTouchStart={e => techSigMode === 'draw' && startSig(e, techSigCanvas, isDrawingTech)}
+                            onTouchMove={e => techSigMode === 'draw' && moveSig(e, techSigCanvas, isDrawingTech)}
+                            onTouchEnd={() => techSigMode === 'draw' && endSig(techSigCanvas, isDrawingTech, setTechSignature)}
+                        />
+                        {techSigMode === 'type' && (
+                             <div className="absolute inset-0 flex items-center justify-center bg-white/50 backdrop-blur-sm">
+                                  <input 
+                                    type="text" 
+                                    className="w-3/4 p-2 bg-white border border-slate-200 rounded-xl text-center font-bold outline-none focus:ring-2 focus:ring-blue-500" 
+                                    placeholder="Type Name"
+                                    value={techTypedName}
+                                    onChange={(e) => {
+                                        setTechTypedName(e.target.value);
+                                        handleTypeSignature(e.target.value, techSigCanvas, setTechSignature);
+                                    }}
+                                  />
+                             </div>
+                        )}
+                        <button type="button" onClick={() => { clearSig(techSigCanvas, setTechSignature); setTechTypedName(''); }} className="absolute top-2 right-2 p-2 bg-slate-100 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                            <Eraser className="w-4 h-4" />
+                        </button>
+                    </div>
+                    <p className="text-[9px] font-bold text-slate-400 text-center">Officer validating intake</p>
+                </div>
+            </div>
+          </section>
 
           <div className="space-y-4">
             <div className="p-8 bg-slate-900 rounded-[2.5rem] text-white shadow-2xl space-y-4">

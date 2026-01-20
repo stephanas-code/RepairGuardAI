@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { RepairJob, User, TIER_FEATURES } from '../types';
-import { ShieldCheck, Smartphone, Laptop, Printer, Package, Calendar, Clock, Hash, MapPin, ExternalLink, AlertTriangle, Gavel, Scale } from 'lucide-react';
+import { ShieldCheck, Smartphone, Laptop, Printer, Package, Calendar, Clock, Hash, MapPin, ExternalLink, AlertTriangle, Gavel, Scale, Phone, User as UserIcon, Sparkles, BrainCircuit } from 'lucide-react';
 
 interface TrustReceiptProps {
   job: RepairJob;
@@ -28,6 +28,25 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
 
   // Mock QR Code generation URL
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=RG-VERIFY:${job.id}-${job.recordHash.substring(0,8)}`;
+
+  const handleShareWhatsApp = () => {
+      const text = `*RepairGuard Intake Receipt*\n` +
+                   `------------------------\n` +
+                   `*Case ID:* ${job.id}\n` +
+                   `*Client:* ${job.clientName}\n` +
+                   `*Device:* ${job.deviceBrand} ${job.deviceModel} (S/N: ${job.serialNumber})\n` +
+                   `*Reported Fault:* ${job.faultDescription}\n` +
+                   `*Initial Deposit:* ₦${job.initialDeposit.toLocaleString()}\n` +
+                   `------------------------\n` +
+                   `*Preliminary AI Diagnosis:*\n` +
+                   `${job.aiSuggestions && job.aiSuggestions.length > 0 ? job.aiSuggestions[0].solution : 'Pending Analysis'}\n` +
+                   `------------------------\n` +
+                   `Powered by RepairGuard AI`;
+      
+      const url = `https://wa.me/${job.clientPhone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(text)}`;
+      window.open(url, '_blank');
+      if (onWhatsApp) onWhatsApp();
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-sm animate-in fade-in">
@@ -56,25 +75,39 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
            )}
 
            <div className="relative z-10">
+               {/* Issued By & Client Details Section */}
                <div className="flex justify-between items-start mb-8 border-b-2 border-slate-100 pb-6">
-                  <div>
+                  <div className="flex-1 pr-4">
                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Issued By</p>
-                     <h3 className="font-black text-lg text-slate-900">{job.company}</h3>
+                     <h3 className="font-black text-lg text-slate-900 leading-tight">{job.company}</h3>
                      <div className="flex items-center text-xs text-slate-500 mt-1 font-bold">
                         <MapPin className="w-3 h-3 mr-1" />
                         <span>{job.businessCAC}</span>
                      </div>
                   </div>
-                  <div className="text-right">
-                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Case ID</p>
-                     <p className="font-mono font-black text-lg text-blue-600">{job.id}</p>
+                  <div className="text-right flex-1 pl-4 border-l border-slate-100">
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Client Details</p>
+                     <h3 className="font-black text-lg text-slate-900 leading-tight">{job.clientName}</h3>
                      <div className="flex items-center justify-end text-xs text-slate-500 mt-1 font-bold">
-                        <Calendar className="w-3 h-3 mr-1" />
-                        <span>{new Date(job.createdAt).toLocaleDateString()}</span>
+                        <Phone className="w-3 h-3 mr-1" />
+                        <span>{job.clientPhone}</span>
                      </div>
                   </div>
                </div>
+               
+               {/* Case Metadata */}
+               <div className="flex justify-between items-center mb-6">
+                    <div>
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Case ID</p>
+                         <p className="font-mono font-black text-lg text-blue-600">{job.id}</p>
+                    </div>
+                    <div className="text-right">
+                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Intake Date</p>
+                         <p className="font-bold text-slate-700">{new Date(job.createdAt).toLocaleDateString()}</p>
+                    </div>
+               </div>
 
+               {/* Asset Details */}
                <div className="bg-slate-50 rounded-2xl p-6 border border-slate-200 mb-6">
                   <div className="flex items-center space-x-4 mb-4">
                      <div className="p-3 bg-white rounded-xl shadow-sm text-slate-700 border border-slate-100">
@@ -83,7 +116,7 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
                      <div>
                         <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Asset Deposited</p>
                         <p className="font-black text-slate-900 text-lg leading-tight">{job.deviceBrand} {job.deviceModel}</p>
-                        <p className="text-xs font-mono text-slate-500 mt-0.5">S/N: {job.serialNumber}</p>
+                        <p className="text-xs font-mono text-slate-500 mt-0.5 font-bold uppercase tracking-wide">S/N: {job.serialNumber}</p>
                      </div>
                   </div>
                   <div className="space-y-2 text-xs">
@@ -101,6 +134,35 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
                      </div>
                   </div>
                </div>
+
+               {/* AI Diagnosis Section */}
+               {job.aiSuggestions && job.aiSuggestions.length > 0 && (
+                  <div className="bg-indigo-50 rounded-2xl p-6 border border-indigo-100 mb-6 relative overflow-hidden">
+                     <div className="absolute top-0 right-0 p-4 opacity-10"><BrainCircuit className="w-16 h-16 text-indigo-900" /></div>
+                     <div className="relative z-10">
+                        <div className="flex items-center space-x-2 mb-3">
+                           <Sparkles className="w-4 h-4 text-indigo-600" />
+                           <h4 className="text-xs font-black text-indigo-900 uppercase tracking-widest">Gemini Forensic Diagnosis</h4>
+                        </div>
+                        <div className="space-y-3">
+                           {job.aiSuggestions.slice(0, 2).map((suggestion, idx) => (
+                              <div key={idx} className="relative pl-3 border-l-2 border-indigo-300">
+                                 <div className="flex justify-between items-start">
+                                    <span className="font-black text-xs text-indigo-800">{suggestion.solution}</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase ${suggestion.riskLevel === 'Low' ? 'bg-emerald-100 text-emerald-700' : suggestion.riskLevel === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-rose-100 text-rose-700'}`}>
+                                            {suggestion.riskLevel} Risk
+                                        </span>
+                                        <span className="text-[8px] font-bold bg-indigo-200 text-indigo-700 px-1.5 py-0.5 rounded">{Math.round(suggestion.accuracy)}% Conf.</span>
+                                    </div>
+                                 </div>
+                                 <p className="text-[9px] text-indigo-700 leading-tight mt-1 line-clamp-2">{suggestion.description}</p>
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  </div>
+               )}
 
                {/* Legal Protection Declaration on Receipt */}
                <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 mb-8">
@@ -143,15 +205,13 @@ const TrustReceipt: React.FC<TrustReceiptProps> = ({ job, user, onClose, onWhats
 
         {/* Footer Actions - Hidden during print */}
         <div className="no-print p-6 bg-slate-50 border-t border-slate-200 flex flex-col gap-3">
-           {!isFreeTier && (
-               <button onClick={onWhatsApp} className="w-full py-4 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl font-black uppercase tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/20 transition-all">
-                  <ExternalLink className="w-5 h-5" />
-                  <span>Send via WhatsApp</span>
-               </button>
-           )}
+           <button onClick={handleShareWhatsApp} className="w-full py-4 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl font-black uppercase tracking-widest flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/20 transition-all">
+              <ExternalLink className="w-5 h-5" />
+              <span>Whatsapp</span>
+           </button>
            <div className="flex gap-3">
               <button onClick={onPrint} className="flex-1 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
-                 Print
+                 Save PDF (Ctrl+P)
               </button>
               <button onClick={onClose} className="flex-1 py-3 bg-white border-2 border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest transition-all">
                  Close

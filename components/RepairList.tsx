@@ -282,12 +282,29 @@ const RepairList: React.FC<RepairListProps> = ({ repairs, onUpdate, user }) => {
 
                   <div className="space-y-4">
                     <label className="text-[10px] font-black text-slate-400 uppercase flex items-center space-x-2"><Activity className="w-4 h-4 text-indigo-500" /> <span>Technician Outcome</span></label>
-                    <select disabled={isLocked} className="w-full px-5 py-3 bg-slate-50 border rounded-xl text-sm font-black" value={localStatus} onChange={e => {setLocalStatus(e.target.value as any); setIsDirty(true);}}>
+                    <select disabled={isLocked} className="w-full px-5 py-3 bg-slate-50 border rounded-xl text-sm font-black" value={localStatus} onChange={e => {
+                        const s = e.target.value as RepairStatus;
+                        setLocalStatus(s); 
+                        if (s === 'Completed') setLocalInitialDeposit(localAgreedAmount);
+                        setIsDirty(true);
+                    }}>
                       <option value="Pending">Pending</option>
                       <option value="In Progress">In Progress</option>
                       <option value="Completed">Completed</option>
                       <option value="Unrepairable">Unrepairable</option>
                     </select>
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Agreed (₦)</label>
+                            <input type="number" disabled={isLocked} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-bold" value={localAgreedAmount} onChange={e => {setLocalAgreedAmount(parseFloat(e.target.value) || 0); setIsDirty(true);}} />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase">Paid (₦)</label>
+                            <input type="number" disabled={isLocked} className="w-full px-4 py-3 bg-slate-50 border rounded-xl text-sm font-bold" value={localInitialDeposit} onChange={e => {setLocalInitialDeposit(parseFloat(e.target.value) || 0); setIsDirty(true);}} />
+                        </div>
+                    </div>
+
                     <textarea disabled={isLocked} rows={4} className="w-full px-5 py-3 bg-slate-50 border rounded-xl text-sm font-bold" value={localNotes} onChange={e => {setLocalNotes(e.target.value); setIsDirty(true);}} />
                     <button onClick={handleCommit} disabled={!isDirty || isLocked} className={`w-full py-4 rounded-xl text-[10px] font-black uppercase transition-all ${isDirty ? 'bg-blue-600 text-white shadow-xl' : 'bg-slate-100 text-slate-400'}`}>Save Progress</button>
                   </div>
