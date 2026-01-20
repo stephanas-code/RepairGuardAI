@@ -15,19 +15,24 @@ export const analyzeFault = async (
   try {
     const response = await ai.models.generateContent({
       model: "gemini-3-pro-preview",
-      contents: `Perform a forensic repair analysis for a ${category} (${brand} ${model}).
+      contents: `Perform a comprehensive forensic repair analysis for a ${category} (${brand} ${model}).
       Reported Fault: "${fault}"
       Initial Physical Condition: "${initialCondition}"
       
-      Provide 3 technical diagnostic suggestions.
-      For each, define:
-      - 'solution': Technical title
-      - 'description': Forensic diagnostic steps
-      - 'accuracy': Confidence that this is the root cause (0-100)
-      - 'precision': Effectiveness of the proposed fix (0-100)
-      - 'riskLevel': Risk of further damage (Low, Medium, High)`,
+      Provide 3 technical diagnostic suggestions, prioritizing the most likely solution first.
+      
+      For each suggestion, provide:
+      - 'solution': Technical title of the fix.
+      - 'description': Brief summary of the issue.
+      - 'accuracy': Confidence score (0-100).
+      - 'precision': Effectiveness score (0-100).
+      - 'riskLevel': 'Low', 'Medium', or 'High'.
+      - 'steps': An ordered array of specific technical steps to perform the repair.
+      - 'externalResources': An array of 1-2 relevant external links (YouTube video search query link or iFixit/Manufacturer guide URL) to assist the technician.
+      
+      Ensure links are valid search query URLs if specific direct links aren't certain (e.g., https://www.youtube.com/results?search_query=...).`,
       config: {
-        systemInstruction: `You are RepairGuardAI, a regulated, compliance-focused digital repair, forensic logging, and cybersecurity assistance system. All outputs must be structured, neutral, factual, and timestamp-aware.`,
+        systemInstruction: `You are RepairGuardAI, a world-class forensic repair assistant. Output detailed, professional technical steps.`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
@@ -38,9 +43,24 @@ export const analyzeFault = async (
               description: { type: Type.STRING },
               accuracy: { type: Type.NUMBER },
               precision: { type: Type.NUMBER },
-              riskLevel: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] }
+              riskLevel: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
+              steps: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              externalResources: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    url: { type: Type.STRING },
+                    type: { type: Type.STRING, enum: ['Video', 'Article'] }
+                  }
+                }
+              }
             },
-            required: ["solution", "description", "accuracy", "precision", "riskLevel"]
+            required: ["solution", "description", "accuracy", "precision", "riskLevel", "steps", "externalResources"]
           }
         }
       }

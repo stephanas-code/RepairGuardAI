@@ -163,6 +163,8 @@ export interface AISuggestion {
   precision: number;
   riskLevel: 'Low' | 'Medium' | 'High';
   description: string;
+  steps?: string[];
+  externalResources?: { title: string; url: string; type: 'Video' | 'Article' }[];
 }
 
 export interface SyncStats {

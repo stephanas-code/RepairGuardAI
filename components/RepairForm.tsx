@@ -11,7 +11,7 @@ import {
   PenTool, AlertTriangle, Hash, Activity, Mail, Landmark, Shield, 
   Keyboard, MousePointer2, CreditCard, Banknote, X, MessageSquare,
   WifiOff, Lock, Save, Camera, RefreshCw, Image, Eye, Loader2,
-  Usb, Download, Check, Scale, Gavel, BrainCircuit
+  Usb, Download, Check, Scale, Gavel, BrainCircuit, ExternalLink, PlayCircle, FileText
 } from 'lucide-react';
 
 declare global {
@@ -43,6 +43,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
   const [scanningPhoto, setScanningPhoto] = useState<'front' | 'back' | null>(null);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [isRegeneratingAI, setIsRegeneratingAI] = useState(false);
+  const [selectedSuggestion, setSelectedSuggestion] = useState<AISuggestion | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const [bridgeAvailable, setBridgeAvailable] = useState<boolean>(false);
@@ -289,6 +290,75 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
         />
       )}
 
+      {selectedSuggestion && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white w-full max-w-2xl max-h-[90vh] rounded-[2.5rem] shadow-2xl flex flex-col relative overflow-hidden">
+            <div className="p-8 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start shrink-0">
+               <div>
+                  <h3 className="text-xl font-black text-slate-900 leading-tight mb-2">{selectedSuggestion.solution}</h3>
+                  <div className="flex space-x-2">
+                     <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${selectedSuggestion.riskLevel === 'Low' ? 'bg-emerald-100 text-emerald-600' : selectedSuggestion.riskLevel === 'Medium' ? 'bg-amber-100 text-amber-600' : 'bg-rose-100 text-rose-600'}`}>
+                        {selectedSuggestion.riskLevel} Risk
+                     </span>
+                     <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-indigo-100 text-indigo-600">
+                        {selectedSuggestion.accuracy}% Accuracy
+                     </span>
+                  </div>
+               </div>
+               <button onClick={() => setSelectedSuggestion(null)} className="p-3 bg-white rounded-full hover:bg-slate-100 transition-colors">
+                  <X className="w-5 h-5 text-slate-400" />
+               </button>
+            </div>
+            
+            <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
+               <div className="space-y-2">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Diagnosis Overview</h4>
+                  <p className="text-sm font-medium text-slate-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">{selectedSuggestion.description}</p>
+               </div>
+               
+               {selectedSuggestion.steps && selectedSuggestion.steps.length > 0 && (
+                  <div className="space-y-3">
+                     <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">Forensic Repair Protocol</h4>
+                     <div className="space-y-2">
+                        {selectedSuggestion.steps.map((step, idx) => (
+                           <div key={idx} className="flex items-start gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors">
+                              <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0 mt-0.5">{idx + 1}</div>
+                              <p className="text-sm font-bold text-slate-700">{step}</p>
+                           </div>
+                        ))}
+                     </div>
+                  </div>
+               )}
+
+               {selectedSuggestion.externalResources && selectedSuggestion.externalResources.length > 0 && (
+                  <div className="space-y-3">
+                     <h4 className="text-xs font-black uppercase tracking-widest text-slate-400">External Intelligence</h4>
+                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {selectedSuggestion.externalResources.map((res, idx) => (
+                           <a 
+                              key={idx} 
+                              href={res.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="flex items-center space-x-3 p-4 rounded-2xl border-2 border-slate-100 hover:border-indigo-500 hover:bg-indigo-50 transition-all group"
+                           >
+                              <div className={`p-2 rounded-xl ${res.type === 'Video' ? 'bg-rose-100 text-rose-600' : 'bg-blue-100 text-blue-600'}`}>
+                                 {res.type === 'Video' ? <PlayCircle className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                 <p className="text-xs font-black text-slate-900 truncate group-hover:text-indigo-700">{res.title}</p>
+                                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">{res.type} Resource</p>
+                              </div>
+                           </a>
+                        ))}
+                     </div>
+                  </div>
+               )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white p-10 rounded-[3rem] shadow-2xl border border-slate-200">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
           <div className="flex items-center space-x-5">
@@ -318,6 +388,7 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
         </header>
 
         <form onSubmit={handleSubmit} className="space-y-12">
+          {/* ... Inputs Sections ... */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
             <section className="space-y-6">
               <h3 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center space-x-3"><div className="w-1.5 h-1.5 bg-blue-500 rounded-full" /><span>Client Info</span></h3>
@@ -413,7 +484,11 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
               {aiSuggestions.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {aiSuggestions.map((s, i) => (
-                    <div key={i} className="p-5 bg-white border border-slate-200 rounded-3xl shadow-sm relative overflow-hidden group hover:border-indigo-300 transition-colors">
+                    <div 
+                      key={i} 
+                      onClick={() => setSelectedSuggestion(s)}
+                      className="p-5 bg-white border border-slate-200 rounded-3xl shadow-sm relative overflow-hidden group hover:border-indigo-300 hover:shadow-lg transition-all cursor-pointer"
+                    >
                       <div className="flex justify-between items-start mb-3">
                         <div className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${s.riskLevel === 'Low' ? 'bg-emerald-100 text-emerald-600' : s.riskLevel === 'Medium' ? 'bg-amber-100 text-amber-600' : 'bg-rose-100 text-rose-600'}`}>
                           {s.riskLevel} Risk
@@ -421,7 +496,12 @@ const RepairForm: React.FC<RepairFormProps> = ({ user, onSubmit, isOnline, initi
                         <div className="text-[10px] font-black text-indigo-600">{s.accuracy}% Accuracy</div>
                       </div>
                       <h5 className="font-black text-slate-900 text-sm mb-1">{s.solution}</h5>
-                      <p className="text-[10px] text-slate-500 leading-relaxed">{s.description}</p>
+                      <p className="text-[10px] text-slate-500 leading-relaxed line-clamp-3">{s.description}</p>
+                      
+                      <div className="mt-4 pt-3 border-t border-slate-50 flex justify-between items-center text-[9px] font-black uppercase text-indigo-400 group-hover:text-indigo-600">
+                         <span>View Protocol</span>
+                         <ExternalLink className="w-3 h-3" />
+                      </div>
                     </div>
                   ))}
                 </div>
